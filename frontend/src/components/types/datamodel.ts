@@ -9,6 +9,12 @@ export interface ImageContent {
   data?: string;
 }
 
+export interface DocFileContent {
+  url: string;
+  alt?: string;
+  data?: string;
+}
+
 export interface FunctionCall {
   id: string;
   arguments: string; // JSON string
@@ -34,7 +40,7 @@ export interface TextMessageConfig extends BaseMessageConfig {
 }
 
 export interface MultiModalMessageConfig extends BaseMessageConfig {
-  content: (string | ImageContent)[];
+  content: (string | ImageContent | DocFileContent)[];
 }
 
 export interface StopMessageConfig extends BaseMessageConfig {

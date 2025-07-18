@@ -18,6 +18,7 @@ import SubMenu from "../common/SubMenu";
 import { SessionRunStatusIndicator } from "./statusicon";
 import LearnPlanButton from "../features/Plans/LearnPlanButton";
 import { Button } from "../common/Button";
+import { useTranslation } from "react-i18next";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -48,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSubMenuChange,
   onStopSession,
 }) => {
+  const { t, i18n } = useTranslation();
   // Group sessions by time period
   const groupSessions = (sessions: Session[]) => {
     const now = new Date();
@@ -148,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         }}
                       >
                         <Edit className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />{" "}
-                        Edit
+                        {t("Edit")}
                       </Menu.Item>
                       <Menu.Item
                         key="stop"
@@ -160,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         danger
                       >
                         <StopCircle className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />{" "}
-                        Disconnect
+                        {t("Disconnect")}
                       </Menu.Item>
                       <Menu.Item
                         key="delete"
@@ -171,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         danger
                       >
                         <Trash2 className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />{" "}
-                        Delete
+                        {t("Delete")}
                       </Menu.Item>
                       <Menu.Item
                         key="learn-plan"
@@ -208,18 +210,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return (
-      <div className="h-full border-r border-secondary">
-        <div className="mb-4">
+      <div className="h-full w-64 border-r border-secondary bg-secondary px-4 flex-shrink-0">
+        <div className="mb-4 pt-2">
           <SubMenu
             items={[
               {
                 id: "mcp_servers",
-                label: "MCP Servers",
+                label: t("MCP Servers"),
                 icon: <Server className="w-4 h-4" />,
               },
               {
                 id: "saved_plan",
-                label: "Saved Plans",
+                label: t("Saved Plans"),
                 icon: <Archive className="w-4 h-4" />,
               },
             ]}
@@ -232,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <>
             <div className="flex items-center justify-between py-2 border-secondary">
               <div className="flex items-center gap-2">
-                <span className="text-primary font-medium">Sessions</span>
+                <span className="text-primary font-medium">{t("Sessions")}</span>
 
                 {isLoading ? (
                   <div className="py-2 flex text-sm text-secondary">
@@ -248,8 +250,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="my-4 flex text-sm">
-              <div className="mr-2 w-full">
-                <Tooltip title="Create new session">
+              <div className="w-full">
+                <Tooltip title={t("Create New Session")}>
                   <Button
                     className="w-full"
                     variant="primary"
@@ -258,7 +260,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onEditSession()}
                     disabled={isLoading}
                   >
-                    New Session
+                    {t("New Session")}
                   </Button>
                 </Tooltip>
               </div>
@@ -268,20 +270,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {sortedSessions.length === 0 ? (
                 <div className="p-2 mr-2 text-center text-secondary text-sm border border-dashed rounded">
                   <InfoIcon className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-                  No recent sessions found
+                  {t("No recent sessions found.")}
                 </div>
               ) : (
                 <>
                   {groupedSessions.today.length > 0 && (
                     <div>
-                      <div className="py-2 text-sm text-secondary">Today</div>
+                      <div className="py-2 text-sm text-secondary">{t("Today")}</div>
                       {renderSessionGroup(groupedSessions.today)}
                     </div>
                   )}
                   {groupedSessions.yesterday.length > 0 && (
                     <div>
                       <div className="py-2 text-sm text-secondary">
-                        Yesterday
+                        {t("Yesterday")}
                       </div>
                       {renderSessionGroup(groupedSessions.yesterday)}
                     </div>
@@ -289,7 +291,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {groupedSessions.last7Days.length > 0 && (
                     <div>
                       <div className="py-2 text-sm text-secondary">
-                        Last 7 Days
+                        {t("Last 7 Days")}
                       </div>
                       {renderSessionGroup(groupedSessions.last7Days)}
                     </div>
@@ -297,7 +299,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {groupedSessions.last30Days.length > 0 && (
                     <div>
                       <div className="py-2 text-sm text-secondary">
-                        Last 30 Days
+                        {t("Last 30 Days")}
                       </div>
                       {renderSessionGroup(groupedSessions.last30Days)}
                     </div>

@@ -25,6 +25,7 @@ import {
   UserIcon,
   AgentIcon,
 } from "../../common/Icon";
+import { useTranslation } from "react-i18next";
 
 // Debounce hook
 const useDebounce = (callback: Function, delay: number) => {
@@ -124,6 +125,7 @@ const PlanView: React.FC<PlanProps> = ({
   isCollapsed: initialIsCollapsed = false,
   forceCollapsed = false,
 }) => {
+  const { t, i18n } = useTranslation();
   const [localPlan, setLocalPlan] = useState<IPlanStep[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(
     viewOnly && (initialIsCollapsed || forceCollapsed)
@@ -273,9 +275,9 @@ const PlanView: React.FC<PlanProps> = ({
         <div className="flex items-center mb-2">
           <ClipboardList className="h-5 w-5 mr-2 flex-shrink-0" />
           {fromMemory
-            ? "Potentially relevant plan retrieved from memory. "
-            : "Here's a plan. "}
-          <span> You can edit it directly or through the chat.</span>
+            ? t("Potentially relevant plan retrieved from memory. ")
+            : t("Here\'s a plan. ")}
+          <span> {t("You can edit it directly or through the chat.")}</span>
         </div>
       )}
       <div className="rounded-none border-[var(--color-border-primary)]">
@@ -285,7 +287,7 @@ const PlanView: React.FC<PlanProps> = ({
             onClick={() => setIsCollapsed(false)}
           >
             <ClipboardList className="h-5 w-5 mr-2 flex-shrink-0" />
-            <h2 className="">Plan for: {task}</h2>
+            <h2 className="">{t("Plan for:")} {task}</h2>
           </div>
         ) : (
           <>
@@ -303,7 +305,7 @@ const PlanView: React.FC<PlanProps> = ({
                   {viewOnly && (
                     <ClipboardList className="h-5 w-5 mr-2 flex-shrink-0" />
                   )}
-                  <h2 className="">Plan for: {task}</h2>
+                  <h2 className="">{t("Plan for:")} {task}</h2>
                 </div>
               </div>
             )}
@@ -403,10 +405,10 @@ const PlanView: React.FC<PlanProps> = ({
                                         : ""
                                       }`}
                                     readOnly={viewOnly}
-                                    placeholder="Enter step details"
+                                    placeholder={t("Enter step details")}
                                   />
-                                }
-                                {!viewOnly && (
+                                  }
+                                  {!viewOnly && (
                                   <div
                                     className={`flex items-center transition-opacity ${hoveredIndex === index
                                         ? "opacity-100"
@@ -482,16 +484,16 @@ const PlanView: React.FC<PlanProps> = ({
               <div className="mt-2 p-0 flex justify-end">
                 <div className="flex gap-4 items-center">
                   <span className="mt-1 text-[var(--color-text-secondary)] px-2">
-                    {saveStatus === "saving" && "Saving..."}
+                    {saveStatus === "saving" && t("Saving...")}
                     {saveStatus === "saved" && ""}
-                    {saveStatus === "error" && "Error saving changes"}
+                    {saveStatus === "error" && t("Error saving changes")}
                   </span>
                   <div
                     onClick={addLocalPlan}
                     className="mt-2 flex items-center text-[var(--color-text-secondary)] px-4 rounded hover:text-[var(--color-text-primary)] cursor-pointer"
                   >
                     <PlusIcon className="h-5 w-5 mr-2" />
-                    Add Step
+                    {t("Add Step")}
                   </div>
                 </div>
               </div>

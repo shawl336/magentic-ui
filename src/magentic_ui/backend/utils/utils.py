@@ -183,6 +183,12 @@ def get_file_type(file_path: str) -> str:
 
     # Supported PDF extension
     PDF_EXTENSION = ".pdf"
+    
+    # Supported Docx-like extensions
+    DOCX_EXTENSION = {
+        ".docx",
+        ".doc",
+    }
 
     # Determine the file extension
     _, file_extension = os.path.splitext(file_path)
@@ -198,6 +204,8 @@ def get_file_type(file_path: str) -> str:
         file_type = "pdf"
     elif file_extension in VIDEO_EXTENSIONS:
         file_type = "video"
+    elif file_extension in DOCX_EXTENSION:
+        file_type = "docx"
     else:
         file_type = "unknown"
 

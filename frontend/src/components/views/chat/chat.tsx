@@ -28,6 +28,7 @@ import {
 } from "../../types/plan";
 import SampleTasks from "./sampletasks";
 import ProgressBar from "./progressbar";
+import { useTranslation } from "react-i18next";
 
 // Extend RunStatus for sidebar status reporting
 type SidebarRunStatus = BaseRunStatus | "final_answer_awaiting_input";
@@ -78,6 +79,7 @@ export default function ChatView({
   onRunStatusChange,
   onSubMenuChange,
 }: ChatViewProps) {
+  const { t, i18n } = useTranslation();
   const serverUrl = getServerUrl();
   const [error, setError] = React.useState<IStatus | null>({
     status: true,
@@ -1149,7 +1151,7 @@ export default function ChatView({
 
   const handleAcceptPlan = (text: string) => {
     if (currentRun?.status === "awaiting_input") {
-      const query = text || "Plan Accepted";
+      const query = text || t("Plan Accepted");
       handleInputResponse(query, [], true);
     }
   };
@@ -1163,30 +1165,24 @@ export default function ChatView({
       {contextHolder}
       <div className="flex flex-col h-full w-full">
         {/* Progress Bar - Sticky at top */}
-        <div className="progress-container" style={{ height: "3.5rem" }}>
-          <div
-            className="transition-opacity duration-300"
-            style={{
-              opacity:
-                currentRun?.status === "active" ||
-                currentRun?.status === "awaiting_input" ||
-                currentRun?.status === "paused" ||
-                currentRun?.status === "pausing"
-                  ? 1
-                  : 0,
-            }}
-          >
-            <ProgressBar
-              isPlanning={isPlanning}
-              progress={progress}
-              hasFinalAnswer={hasFinalAnswer}
-            />
+        {(currentRun?.status === "active" ||
+          currentRun?.status === "awaiting_input" ||
+          currentRun?.status === "paused" ||
+          currentRun?.status === "pausing") && (
+          <div className="progress-container" style={{ height: "3.5rem" }}>
+            <div className="transition-opacity duration-300">
+              <ProgressBar
+                isPlanning={isPlanning}
+                progress={progress}
+                hasFinalAnswer={hasFinalAnswer}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div
           ref={chatContainerRef}
-          className={`flex-1 overflow-y-auto scroll mt-1 min-h-0 relative w-full h-full ${
+          className={`flex-1 overflow-y-auto scroll mt-1 min-h-0 relative w-full h-full pt-2 ${
             noMessagesYet && currentRun
               ? "flex items-center justify-center"
               : ""
@@ -1244,7 +1240,7 @@ export default function ChatView({
               } mx-auto px-4 sm:px-6 md:px-8`}
             >
               <div className="text-secondary text-lg mb-6">
-                Enter a message to get started
+                {t("Enter a message to get started")}
               </div>
 
               <div className="w-full">

@@ -65,6 +65,10 @@ from ._sentinel_prompts import (
 )
 from ._utils import is_accepted_str, extract_json_from_string
 from loguru import logger as trace_logger
+import logging
+from autogen_agentchat import TRACE_LOGGER_NAME
+
+logger = logging.getLogger(TRACE_LOGGER_NAME)
 
 
 class OrchestratorState(BaseGroupChatManagerState):
@@ -167,7 +171,7 @@ class Orchestrator(BaseGroupChatManager):
                 raise ValueError(
                     f"User agent topic {self._user_agent_topic} not in participant names {self._participant_names}"
                 )
-
+        
         self._memory_controller = None
         self._memory_provider = memory_provider
         if (
@@ -378,6 +382,7 @@ class Orchestrator(BaseGroupChatManager):
             metadata=metadata or {"internal": internal_str},
         )
 
+        logger.info("publishing message", str(content))
         await self.publish_message(
             GroupChatMessage(message=message),
             topic_id=DefaultTopicId(type=self._output_topic_type),
@@ -560,6 +565,11 @@ class Orchestrator(BaseGroupChatManager):
                 return
         await self._orchestrate_step(ctx.cancellation_token)
 
+    @event
+    async def handle_orchestrate_log(self, message: GroupChatMessage, ctx: MessageContext) -> None:
+        """Handle the orchestrate step event."""
+        logger.info(str(message.message))
+    
     async def _orchestrate_step(self, cancellation_token: CancellationToken) -> None:
         """Orchestrate the next step of the conversation."""
         if self._state.is_paused:

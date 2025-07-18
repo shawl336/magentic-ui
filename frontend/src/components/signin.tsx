@@ -3,6 +3,7 @@ import { setLocalStorage } from "./utils";
 import { appContext } from "../hooks/provider";
 import * as React from "react";
 import { Button } from "./common/Button";
+import { useTranslation } from 'react-i18next';
 
 type SignInModalProps = {
   isVisible: boolean;
@@ -10,6 +11,7 @@ type SignInModalProps = {
 };
 
 const SignInModal = ({ isVisible, onClose }: SignInModalProps) => {
+  const { t, i18n } = useTranslation();
   const { user, setUser } = React.useContext(appContext);
   const [email, setEmail] = React.useState(user?.email || "default");
 
@@ -39,12 +41,12 @@ const SignInModal = ({ isVisible, onClose }: SignInModalProps) => {
       onCancel={isAlreadySignedIn ? onClose : undefined}
     >
       <span className="text-lg">
-        Enter a username.<br></br> A change of username will create a new profile.
+        {(t("Enter a username.'))}<br></br> {(t('A change of username will create a new profile."))}
       </span>
       <div className="mb-4">
         <Input
           type="text"
-          placeholder="Enter a username"
+          placeholder={(t("Enter a username."))}
           value={email}
           onChange={handleEmailChange}
           className="shadow-sm"

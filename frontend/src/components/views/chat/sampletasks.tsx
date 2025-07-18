@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SampleTasksProps {
   onSelect: (task: string) => void;
@@ -14,6 +15,7 @@ const SAMPLE_TASKS = [
 ];
 
 const SampleTasks: React.FC<SampleTasksProps> = ({ onSelect }) => {
+  const { t, i18n } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
 
@@ -39,7 +41,7 @@ const SampleTasks: React.FC<SampleTasksProps> = ({ onSelect }) => {
   return (
     <div className="mb-6">
       <div className="mt-4 mb-2 text-sm opacity-70 text-secondary">
-        or try a sample task from below{" "}
+        {t("or try a sample task from below")}{" "}
       </div>
       <div className="flex flex-col gap-2 w-full">
         <div className="inline-flex flex-wrap justify-center gap-2 w-full">
@@ -60,7 +62,7 @@ const SampleTasks: React.FC<SampleTasksProps> = ({ onSelect }) => {
             onClick={() => setIsExpanded(!isExpanded)}
             type="button"
           >
-            {isExpanded ? "Show less..." : "Show more sample tasks..."}
+            {isExpanded ? t("Show less...") : t("Show more sample tasks...")}
           </button>
         )}
       </div>

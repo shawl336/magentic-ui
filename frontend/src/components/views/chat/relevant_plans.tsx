@@ -1,6 +1,7 @@
 import React from "react";
 import { List, Tooltip } from "antd";
 import { PlayCircle as PlayCircleIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface RelevantPlansProps {
   isSearching: boolean;
@@ -15,6 +16,7 @@ const RelevantPlans: React.FC<RelevantPlansProps> = ({
   darkMode,
   onUsePlan,
 }) => {
+  const { t, i18n } = useTranslation();
   if (isSearching) {
     return (
       <div
@@ -22,7 +24,7 @@ const RelevantPlans: React.FC<RelevantPlansProps> = ({
           darkMode === "dark" ? "text-gray-400" : "text-gray-500"
         }`}
       >
-        Finding relevant plans...
+        {t("Finding relevant plans...")}
       </div>
     );
   }
@@ -52,7 +54,7 @@ const RelevantPlans: React.FC<RelevantPlansProps> = ({
             : "border-gray-200 bg-gray-50"
         }`}
       >
-        Found relevant plans:
+        {t("Found relevant plans")}
       </div>
 
       {/* Plans list */}

@@ -9,10 +9,14 @@ import {
 import { ClickableImage } from "../atoms";
 import BrowserIframe from "./DetailViewer/browser_iframe";
 import BrowserModal from "./DetailViewer/browser_modal";
-import FullscreenOverlay from "./DetailViewer/fullscreen_overlay"; // Import our new component
+import DocumentIframe from "./DetailViewer/document_iframe";
+import DocumentModal from "./DetailViewer/document_modal";
+import FullscreenOverlay from "./DetailViewer/fullscreen_overlay";
 import { IPlan } from "../../types/plan";
 import { useSettingsStore } from "../../store";
 import { RcFile } from "antd/es/upload";
+import { useTranslation } from "react-i18next";
+
 // Define VNC component props type
 interface VncScreenProps {
   url: string;
@@ -36,6 +40,7 @@ interface DetailViewerProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   novncPort?: string;
+  docUrl?: string;
   onPause?: () => void;
   runStatus?: string;
   activeTab?: TabType;
@@ -49,7 +54,7 @@ interface DetailViewerProps {
   ) => void;
 }
 
-type TabType = "screenshots" | "live";
+type TabType = "screenshots" | "live" | "doc";
 
 const DetailViewer: React.FC<DetailViewerProps> = ({
   images,
@@ -58,6 +63,7 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
   currentIndex,
   onIndexChange,
   novncPort,
+  docUrl,
   onPause,
   runStatus,
   activeTab: controlledActiveTab,
@@ -65,10 +71,12 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
   detailViewerContainerId,
   onInputResponse,
 }) => {
+  const { t, i18n } = useTranslation();
   const [internalActiveTab, setInternalActiveTab] = useState<TabType>("live");
   const activeTab = controlledActiveTab ?? internalActiveTab;
-  const [viewMode, setViewMode] = useState<"iframe" | "novnc">("iframe");
+  const [viewMode, setViewMode] = useState<"iframe" | "novnc" | "doc">("iframe");
   const vncRef = useRef();
+  const [isdocModalOpen, setIsdocModalOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -97,6 +105,20 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
     setIsControlMode(true);
     setShowControlHandoverForm(true);
   };
+
+  const getUrlFileName = (url: string) => {
+    const pathName = new URL(url).pathname;
+    return pathName.substring(pathName.lastIndexOf('/') + 1);
+  }
+
+  // React to docUrl presence to switch modes
+  React.useEffect(() => {
+    if (docUrl) {
+      setViewMode("doc");
+    } else {
+      setViewMode("novnc");
+    }
+  }, [docUrl]);
 
   // Add keyboard navigation
   React.useEffect(() => {
@@ -131,7 +153,11 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
   };
 
   const handleMaximizeClick = () => {
-    setIsModalOpen(true);
+    if (viewMode === "doc") {
+      setIsdocModalOpen(true);
+    } else {
+      setIsModalOpen(true);
+    }
   };
 
   const renderScreenshotsTab = () => (
@@ -139,7 +165,7 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
       <div className="flex flex-col h-[65vh] w-full">
         {images.length === 0 ? (
           <div className="flex-1 w-full flex items-center justify-center">
-            <p>No screenshots</p>
+            <p>{t("No screenshots")}</p>
           </div>
         ) : (
           <>
@@ -180,11 +206,29 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
     </>
   );
 
+  const renderDocTab = React.useMemo(() => {
+    if (viewMode != "doc")
+      return;
+    
+    if (!docUrl) {
+      return (
+        <div className="flex-1 w-full h-full min-h-0 flex items-center justify-center">
+          <p>{t("Waiting for document to load...")}</p>
+        </div>
+      );
+    }
+    
+    return <DocumentIframe docUrl={docUrl} />;
+  }, [docUrl, viewMode]);
+
   const renderLiveTab = React.useMemo(() => {
+    if (viewMode == "doc")
+      return;
+
     if (!novncPort) {
       return (
         <div className="flex-1 w-full h-full min-h-0 flex items-center justify-center">
-          <p>Waiting for browser session to start...</p>
+          <p>{t("Waiting for browser session to start...")}</p>
         </div>
       );
     }
@@ -219,7 +263,7 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
             onMouseEnter={() => {}} // Moved overlay to BrowserIframe
             onMouseLeave={() => {}} // Moved overlay to BrowserIframe
           >
-            <Suspense fallback={<div>Loading VNC viewer...</div>}>
+            <Suspense fallback={<div>{t("Loading VNC viewer...")}</div>}>
               <VncScreen
                 url={`ws://${serverHost}:${novncPort}`}
                 scaleViewport
@@ -250,33 +294,37 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
         {/* Tabs and Controls */}
         <div className="flex justify-between items-center mb-4 border-b flex-shrink-0">
           <div className="flex">
-            <button
-              className={`px-6 py-2 font-medium rounded-t-lg transition-colors ${
-                activeTab === "screenshots"
-                  ? "bg-secondary text-primary border-2 border-b-0 border-primary"
-                  : "text-secondary hover:text-primary hover:bg-secondary/10"
-              }`}
-              onClick={() => handleTabChange("screenshots")}
-            >
-              Screenshots
-            </button>
-            <button
-              className={`px-6 py-2 font-medium rounded-t-lg transition-colors ${
-                activeTab === "live"
-                  ? "bg-secondary text-primary border-2 border-b-0 border-primary"
-                  : "text-secondary hover:text-primary hover:bg-secondary/10"
-              }`}
-              onClick={() => handleTabChange("live")}
-            >
-              Live View
-            </button>
+            {viewMode !== "doc" && (
+              <>
+                <button
+                  className={`px-6 py-2 font-medium rounded-t-lg transition-colors ${
+                    activeTab === "screenshots"
+                      ? "bg-secondary text-primary border-2 border-b-0 border-primary"
+                      : "text-secondary hover:text-primary hover:bg-secondary/10"
+                  }`}
+                  onClick={() => handleTabChange("screenshots")}
+                >
+                  {t("Screenshots")}
+                </button>
+                <button
+                  className={`px-6 py-2 font-medium rounded-t-lg transition-colors ${
+                    activeTab === "live"
+                      ? "bg-secondary text-primary border-2 border-b-0 border-primary"
+                      : "text-secondary hover:text-primary hover:bg-secondary/10"
+                  }`}
+                  onClick={() => handleTabChange("live")}
+                >
+                  {t("Live View")}
+                </button>
+              </>
+            )}
           </div>
 
           <div className="flex gap-2">
             {isControlMode && (
               <div className="flex items-center gap-2 px-2 rounded-2xl bg-magenta-800 text-white">
                 <MousePointerClick size={16} />
-                <span>You have control</span>
+                <span>{t("You have control")}</span>
               </div>
             )}
             <button
@@ -298,23 +346,36 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
-          {activeTab === "screenshots" ? renderScreenshotsTab() : renderLiveTab}
+          {viewMode === "doc" 
+            ? renderDocTab
+            : (activeTab === "screenshots" ? renderScreenshotsTab() : renderLiveTab)}
         </div>
       </div>
 
-      <BrowserModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-        }}
-        novncPort={novncPort}
-        title="Browser View"
-        onPause={onPause}
-        runStatus={runStatus}
-        onControlHandover={handleModalControlHandover}
-        isControlMode={isControlMode}
-        onTakeControl={handleTakeControl}
-      />
+      {viewMode !== "doc" && (
+        <BrowserModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+          }}
+          novncPort={novncPort}
+          title="Browser View"
+          onPause={onPause}
+          runStatus={runStatus}
+          onControlHandover={handleModalControlHandover}
+          isControlMode={isControlMode}
+          onTakeControl={handleTakeControl}
+        />
+      )}
+
+      {viewMode === "doc" && (
+        <DocumentModal
+          isOpen={isdocModalOpen}
+          onClose={() => setIsdocModalOpen(false)}
+          docUrl={docUrl}
+          title={docUrl ? getUrlFileName(docUrl) : ""}
+        />
+      )}
 
       {/* Fullscreen Control Mode Overlay */}
       <FullscreenOverlay

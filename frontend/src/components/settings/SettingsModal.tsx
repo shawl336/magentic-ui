@@ -17,6 +17,7 @@ import {
   Typography,
 } from "antd";
 import { validateAll } from "./validation";
+import { useTranslation } from 'react-i18next';
 
 interface SettingsMenuProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface SettingsMenuProps {
 }
 
 const SettingsModal: React.FC<SettingsMenuProps> = ({ isOpen, onClose }) => {
+  const { t, i18n } = useTranslation();
   const { darkMode, setDarkMode, user } = React.useContext(appContext);
   const [isEmailModalOpen, setIsEmailModalOpen] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
@@ -103,10 +105,10 @@ const SettingsModal: React.FC<SettingsMenuProps> = ({ isOpen, onClose }) => {
 
   const tabItems = {
     general: {
-      label: "General",
+      label: t("General"),
       children: (
         <>
-          <Typography.Text strong>General Settings</Typography.Text>
+          <Typography.Text strong>{t("General Settings")}</Typography.Text>
           <Divider />
           <GeneralSettings
             darkMode={darkMode}
@@ -118,10 +120,10 @@ const SettingsModal: React.FC<SettingsMenuProps> = ({ isOpen, onClose }) => {
       ),
     },
     agents: {
-      label: "Agent Settings",
+      label: t("Agent Settings"),
       children: (
         <>
-          <Typography.Text strong>Agent Settings</Typography.Text>
+          <Typography.Text strong>{t("Agent Settings")}</Typography.Text>
           <Divider />
           <AgentSettingsTab
             config={config}
@@ -131,10 +133,10 @@ const SettingsModal: React.FC<SettingsMenuProps> = ({ isOpen, onClose }) => {
       ),
     },
     advanced_config: {
-      label: "Advanced Settings",
+      label: t("Advanced"),
       children: (
         <>
-          <Typography.Text strong>Advanced Settings</Typography.Text>
+          <Typography.Text strong>{t("Advanced Settings")}</Typography.Text>
           <Divider />
           <AdvancedConfigEditor
             config={config}
@@ -162,13 +164,12 @@ const SettingsModal: React.FC<SettingsMenuProps> = ({ isOpen, onClose }) => {
               onClick={handleResetDefaults}
               disabled={isLoading}
             >
-              Reset to Defaults
+              {t("Reset to Default")}
             </Button>
             {hasChanges && (
-              <Typography.Text italic type="warning">
-                Warning: Settings changes will only apply when you create a new
-                session
-              </Typography.Text>
+                <Typography.Text italic type="warning">
+                  {t("Warning: Settings changes will only apply when you create a new session")}
+                </Typography.Text>
             )}
           </Flex>,
         ]}
