@@ -5,6 +5,8 @@ import { planAPI } from "../../views/api";
 import PlanView from "../../views/chat/plan";
 import { getRelativeTimeString } from "../../views/atoms";
 import { IPlan, IPlanStep } from "../../types/plan";
+import { useTranslation } from "react-i18next";
+
 interface PlanCardProps {
   plan: IPlan;
   onUsePlan?: (plan: IPlan) => void;
@@ -24,6 +26,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
   isNew = false,
   onEditComplete,
 }) => {
+  const { t, i18n } = useTranslation();
   const [isHovering, setIsHovering] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(isNew);
   const [localSteps, setLocalSteps] = useState<IPlanStep[]>(plan.steps || []);
@@ -43,7 +46,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
         return;
       }
 
-      if (window.confirm(`Are you sure you want to delete "${plan.task}"?`)) {
+      if (window.confirm(`"${t("Are you sure you want to delete this plan")}" "${plan.task}"?`)) {
         await planAPI.deletePlan(plan.id, plan.user_id);
 
         if (onDeletePlan) {
@@ -162,26 +165,26 @@ const PlanCard: React.FC<PlanCardProps> = ({
           <div className="flex justify-between items-center">
             <span
               className="truncate max-w-[80%]"
-              title={plan.task || "Untitled Plan"}
+              title={plan.task || t("Untitled Plan")}
             >
-              {plan.task || "Untitled Plan"}
+              {plan.task || t("Untitled Plan")}
             </span>
             {isHovering && (
               <div className="flex items-center ml-2">
-                <Tooltip title="Export plan as JSON file">
+                <Tooltip title={t("Export plan as JSON file")}>
                   <button
                     className="bg-transparent border-none cursor-pointer mr-2"
                     onClick={handleExport}
-                    aria-label="Export plan"
+                    aria-label={t("Export plan")}
                   >
                     <Download className="h-5 w-5 transition-colors" />
                   </button>
                 </Tooltip>
-                <Tooltip title="Delete this plan">
+                <Tooltip title={t("Delete this plan")}>
                   <button
                     className="bg-transparent border-none cursor-pointer"
                     onClick={handleDelete}
-                    aria-label="Delete plan"
+                    aria-label={t("Delete plan")}
                   >
                     <Trash2 className="h-5 w-5 transition-colors" />
                   </button>
@@ -195,7 +198,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
         onMouseLeave={() => setIsHovering(false)}
         actions={[
           <div key="use" className="flex items-center justify-center h-full">
-            <Tooltip title="Create a new session with this plan loaded">
+            <Tooltip title={t("Create a new session with this plan loaded")}>
               <Button
                 type="text"
                 className="cursor-pointer flex items-center justify-center font-semibold transition-colors"
@@ -204,19 +207,19 @@ const PlanCard: React.FC<PlanCardProps> = ({
                 }}
               >
                 <PlayCircle className="h-4 w-4 mr-1" />
-                Run Plan
+                {t("Run Plan")}
               </Button>
             </Tooltip>
           </div>,
           <div key="edit" className="flex items-center justify-center h-full">
-            <Tooltip title="Modify plan title and steps">
+            <Tooltip title={t("Modify plan title and steps")}>
               <Button
                 type="text"
                 className="cursor-pointer flex items-center justify-center font-semibold transition-colors"
                 onClick={handleEdit}
               >
                 <Edit2 className="h-4 w-4 mr-1" />
-                Edit
+                {t("Edit")}
               </Button>
             </Tooltip>
           </div>,
@@ -225,7 +228,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
         <div className="flex flex-col flex-grow justify-between">
           <div>
             <div className="mb-4">
-              <p className="text-sm">{steps.length} steps</p>
+              <p className="text-sm">{steps.length} {t("steps")}</p>
             </div>
 
             <div className="space-y-2 min-h-[80px]">
@@ -239,7 +242,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
               ))}
               {steps.length > 3 && (
                 <div className="text-xs">
-                  + {steps.length - 3} more steps
+                  + {steps.length - 3} {t("more steps")}
                 </div>
               )}
             </div>
@@ -269,14 +272,14 @@ const PlanCard: React.FC<PlanCardProps> = ({
           <div>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">
-                Plan Title
+                {t("Plan Title")}
               </label>
               <Input
                 type="text"
                 value={localTask}
                 onChange={(e) => setLocalTask(e.target.value)}
                 onPressEnter={() => handleSavePlan(localSteps, false)}
-                placeholder="Enter plan title"
+                placeholder={t("Enter plan title")}
               />
             </div>
             <PlanView

@@ -1,0 +1,74 @@
+cooperative_planning: true
+autonomous_execution: false
+max_actions_per_step: 5
+multiple_tools_per_call: false
+max_turns: 20
+approval_policy: auto-conservative
+allow_for_replans: true
+do_bing_search: false
+websurfer_loop: false
+retrieve_relevant_plans: never
+server_url: localhost
+mcp_agent_configs:
+  - name: MaterialsSelectorAssistant
+    description: 查询各种变压器的物料参数。
+    system_message: ''
+    mcp_servers:
+      - server_name: MaterialsSelectorAssistant
+        server_params:
+          type: SseServerParams
+          url: http://localhost:18009
+          headers: {}
+          timeout: 5
+          sse_read_timeout: 300
+    tool_call_summary_format: '{tool_name}({arguments}): {result}'
+    model_client:
+      provider: OpenAIChatCompletionClient
+      config:
+        model: qwq-32b
+        api_key: foo
+        base_url: http://36.103.239.236:8000/v1/
+        max_retries: 2
+        model_info:
+          vision: false
+          function_calling: true
+          json_output: false
+          family: r1
+          structured_output: true
+          multiple_system_messages: false
+run_without_docker: false
+browser_headless: true
+model_client_configs:
+  orchestrator: &ref
+    provider: OpenAIChatCompletionClient
+    config:
+      model: qwq-32b
+      api_key: foo
+      base_url: http://36.103.239.236:8000/v1/
+      max_retries: 2
+      model_info:
+        vision: false
+        function_calling: true
+        json_output: false
+        family: r1
+        structured_output: true
+        multiple_system_messages: false
+  web_surfer: *ref
+  coder: *ref
+  file_surfer: *ref
+  action_guard: *ref
+default_model:
+  provider: OpenAIChatCompletionClient
+  config:
+    model: qwq-32b
+    api_key: foo
+    base_url: http://36.103.239.236:8000/v1/
+    max_retries: 2
+    model_info:
+      vision: false
+      function_calling: true
+      json_output: false
+      family: r1
+      structured_output: true
+      multiple_system_messages: false
+

@@ -1,0 +1,256 @@
+{
+  "setting": {
+    "darkMode": "Dark Mode",
+    "lightMode": "Light Mode",
+    "actionApproval": "Action Approval Policy",
+    "allowedWebsites": "Allowed Websites List",
+    "allowedWebsitesRestricted": "Restricted to List",
+    "allowedWebsitesAllowed": "All Websites Allowed",
+    "allowReplans": "Allow Replans",
+    "browserHeadless": "Browser Headless",
+    "retrieveRelevantPlans": "Retrieve Relevant Plans",
+    "noPlanRetrival": "No plan retrieval",
+    "retrievePlanAsHints": "Retrieve plans as hints",
+    "retrievePlanDirectly": "Retrieve plans to use directly",
+    "advancedConfigYaml": "Advanced Configuration (YAML)",
+    "modelConfig": "Model Configuration",
+    "selectLLM": "Select LLM for All Clients",
+    "switchOn": "ON",
+    "switchOff": "OFF",
+    "generalSettings": "General Settings",
+    "agentSettings": "Agent Settings",
+    "advancedSettings": "Advanced Settings",
+    "optionalProperties": "Optional Properties",
+    "model": "Model",
+    "APIKey": "API Key",
+    "endpoint": "Endpoint",
+    "deployment": "Deployment",
+    "version": "Version",
+    "yaml": {
+      "yamlRequireAllClientError": "YAML must include all required model clients: ",
+      "yamlConfigSuccess": "YAML configuration imported successfully",
+      "yamlFailRead": "Failed to read the YAML file",
+      "yamlFailImportConfig": "Failed to import YAML configuration",
+      "yamlAzuerConfigApplied": "Azure AI Foundry configuration applied",
+      "yamlOpenrouterConfigApplied": "OpenRouter configuration applied",
+      "yamlOllmaConfigApplied": "Ollma configuration applied",
+      "yamlOpenaiConfigApplied": "OpenAI configuration applied",
+      "yamlFailUpdateModelConfig": "Failed to update model configuration"
+    },
+    "warning": {
+      "layoutWarning": "Agents can make mistakes. Please monitor its work and intervene if necessary.",
+      "atLeastOneWeb": "You must add at least one website to the Allowed Websites list or turn off this feature",
+      "setChangeNewSession": "Warning: Settings changes will only apply when you create a new session"
+    },
+    "error": {},
+    "button": {
+      "resetToDefault": "Reset to Default",
+      "add": "Add",
+      "importYAML": "Import YAML",
+      "upload": "Upload",
+      "applyChanges": "Apply Changes",
+      "discardChanges": "Discard Changes",
+      "remove": "Remove"
+    },
+    "tooltip": {
+      "actionApprovalTooltip": "Controls when approval is required before taking actions",
+      "allowedWebsitesTooltip": "When enabled, LLMs will only be able to visit websites you add to the list below.",
+      "allowReplansTooltip": "When enabled, Agents will automatically replan if the current plan is not working or you change the original request",
+      "browserHeadlessTooltip": "Only applicable when running without docker. When enabled, the browser will run in headless mode (no UI).",
+      "retrieveRelevantPlansTooltip": "Controls how Agents retrieves and uses relevant plans from previous sessions",
+      "noPlanRetrivalTooltip": "No plan retrieval",
+      "retrievePlanAsHintsTooltip": "Retrieve plans as hints",
+      "retrieveMostRelevantPlanTooltip": "Retrieve most relevant saved plan to be used directly",
+      "modelConfigTooltip0": "YAML configuration for the underlying LLM of the agents.",
+      "modelConfigTooltip1": "The configuration uses AutoGen ChatCompletionClient format.",
+      "modelConfigTooltip2": "Must include configurations for: orchestrator_client, coder_client, web_surfer_client, and file_surfer_client.",
+      "modelConfigTooltip3": "Each client should follow the AutoGen ChatCompletionClient specification with provider, config (model, etc), and max_retries.",
+      "modelConfigTooltip4": "Changes require a new session to take effect.",
+      "selectLLMTooltip": "This will update the model configuration for all agent clients (orchestrator, coder, web surfer, and file surfer)",
+      "mcpServerNameTooltip": "Server Name is required and can only contain letters and numbers.",
+      "sseURLTooltip": "URL is required",
+      "stdioCMDTooltip0": "Command is required",
+      "stdioCMDTooltip1": "Provide the command and arguments, e.g. \"npx -y mcp-server-fetch\"",
+      "toggleBasicAdvancedSettings": "Toggle between Basic and Advanced settings."
+    },
+    "placeholder": {
+      "selectLLMPlaceholder": "Select model to use for all clients",
+      "selectModelProvider": "Select a model provider",
+      "selectPreset": "Select a preset"
+    },
+    "header": {
+      "setLLMForEachAgent": "Set LLM for Each Agent.",
+      "setLLMForAllAgent": "Set LLM for All Agents."
+    },
+    "tab": {
+      "general": "General",
+      "agent": "Agent Settings",
+      "advanced": "Advanced",
+      "modelConfig": "Model Configuration"
+    }
+  },
+
+  "main": {
+    "tooltip": {
+      "openSidebar": "Open Sidebar",
+      "closeSidebar": "Close Sidebar",
+      "createNewSession": "Create New Session"
+    },
+    "tab":{
+      
+    },
+    "account": {
+      "enterUsername": "Enter a username.",
+      "changeUsernameWillCreateNewProfile": "A change of username will create a new profile."
+    },
+    "currentSession": "Current Session",
+    "savedPlans": "Saved Plans",
+    "sessions": "Sessions",
+    "newSession": "New Session",
+    "MCP Servers": "MCP Servers",
+    "noRecentSessions": "No recent sessions found.",
+    "yesterday": "Yesterday",
+    "today": "Today",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days"
+  },
+
+  "chat": {
+    "button": {
+      "giveControlBack": "Give control back to Agents",
+      "showLess": "Show less...",
+      "showMore": "Show more sample tasks..."
+    },
+    "placeholder": {
+      "awaitIputStatus": "Type your response here and let Agents know of any changes in the browser.",
+      "dropFiles": "Drop files here...",
+      "typeMessage": "Type your message here..."
+    },
+    "warning": {
+      "unsupFileType": "Unsupported File Type",
+      "uploadOnlyTextImages": "Please upload only text (.txt) or images (.jpg, .png, .gif, .svg) \n files."
+    },
+    "status": {
+      "saving": "Saving...",
+      "savingError": "Error saving changes"
+    },
+    "tooltip": {
+      "attachFileorPlan": "Attach File or Plan"
+    },
+    "waitBrowserSessionStart": "Waiting for browser session to start...",
+    "takeControl": "Take Control",
+    "cantSeeWhatYouDo": "Agents can't see what you do when you take control.",
+    "describeWhatYouDid": "Please describe what you did when you are ready to hand back \n control:",
+    "securityNote": "Security Note:",
+    "securityBannerMessage": "Agents cannot see what \n you do when you take control. Be cautious about entering passwords or \n sensitive information.",
+    "approval": "Approval",
+    "reject": "Reject",
+    "acceptPlan": "Accept Plan",
+    "resume": "Resume",
+    "planAccepted": "Plan Accepted",
+    "generateNewPlan": "Generate New Plan",
+    "enterMessageToStart": "Enter a message to get started",
+    "largeTextConvertToFile": "Large Text Converted to File",
+    "pastedTextAttachedAsFile": "Your pasted text has been attached as a file.",
+    "attachFile": "Attach File",
+    "noPlansAvailable": "No plans available",
+    "noScreenshots": "No screenshots",
+    "screenshots": "Screenshots",
+    "loadVNCViewer": "Loading VNC viewer...",
+    "liveView": "Live View",
+    "youHaveControl": "You have control",
+    "potentiallyRelevantPlanFromMem": "Potentially relevant plan retrieved from memory. ",
+    "hereAPlan": "Here's a plan. ",
+    "youCanEditDirectly": "You can edit it directly or through the chat.",
+    "planFor": "Plan for:",
+    "findingRelevantPlans": "Finding relevant plans...",
+    "foundRelevantPlans": "Found relevant plans",
+    "trySampleBelow": "or try a sample task from below"
+  },
+
+  "plan": {
+    "error": {
+      "pleaseSignIn": "Please sign in to view your plans"
+    },
+    "tooltip": {
+      "createNewEmptyPlan": "Create a new empty plan",
+      "importPlanFromJSON": "Import a plan from a JSON file",
+      "exportPlanAsJSON": "Export plan as JSON file",
+      "deleteThisPlan": "Delete this plan",
+      "createNewSessionWithThisPlan": "Create a new session with this plan loaded",
+      "modifyPlanTitleAndSteps": "Modify plan title and steps",
+      "thisPlanHasBeenSaved": "This plan has been saved to your library",
+      "creatingPlanFromConversation": "Creating a plan from this conversation",
+      "learnResuablePlan": "Learn a reusable plan from this conversation and save it to your library"
+    },
+    "placeholder": {
+      "searchPlans": "Search Plans...",
+      "enterPlanTitle": "Enter plan title"
+    },
+    "button": {
+      "exportPlan": "Export plan",
+      "deletePlan": "Delete plan",
+      "learningPlan": "Learning Plan...",
+      "learnPlan": "Learn Plan"
+    },
+    "window": {
+      "confirmDeletion": "Are you sure you want to delete this plan"
+    },
+    "newPlan": "New Plan",
+    "dropYourPlanHere": "Drop your plan file here to import",
+    "yourSavedPlans": "Your Saved Plans",
+    "noPlansFoundMatching": "No plans found matching",
+    "clearSearch": "Clear search",
+    "noPlansYetCreateOneOrImport": "No plans yet. Create one or import an existing plan.",
+    "create": "Create",
+    "import": "Import",
+    "untitledPlan": "Untitled Plan",
+    "runPlan":"Run Plan",
+    "edit": "Edit",
+    "steps": "steps",
+    "moreSteps": "more steps",
+    "planTitle": "Plan Title",
+    "planLearned": "Plan Learned",
+    "creatingNewSessFromPlan": "Creating new session from plan...",
+    "addStep": "Add Step",
+    "plan": "Plan:"
+  },
+
+  "view": {
+    "agentComponent": "Magentic-UI  component",
+    "button": {
+      "cancel": "Cancel",
+      "update": "Update",
+      "create": "Create"
+    },
+    "sessionName": "Session Name",
+    "pleaseEnterSessName": "Please enter a session name",
+    "sessNameNoExceed100": "Session name cannot exceed 100 characters",
+    "editSession": "Edit Session",
+    "createSession": "Create Session",
+    "processing": "Processing",
+    "approvalRequest": "Approval Request:",
+    "waitingForApproval": "Waiting for approval",
+    "waitingForInput": "Waiting for your input",
+    "anErrorOccurred": "An error occurred",
+    "taskWasStopped": "Task was stopped:",
+    "pausing": "Pausing",
+    "paused": "Paused",
+    "resuming": "Resuming",
+    "edit": "Edit",
+    "disconnect": "Disconnect",
+    "delete": "Delete",
+    "loadingSess": "Loading session..."
+  },
+
+  "message": {
+    "error": {
+      "errSavingSess": "Error saving session",
+      "errDeletingSess": "Error deleting session",
+      "sessNotFound": "Session not found",
+      "errLoadingSess": "Error loading session",
+      "errUpdatingSessName": "Error updating session name",
+      "errCreatingDefaultSess": "Error creating default session"
+    }
+  }
+}

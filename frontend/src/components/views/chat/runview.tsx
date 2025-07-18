@@ -68,9 +68,10 @@ const RunView: React.FC<RunViewProps> = ({
 }) => {
   const threadContainerRef = useRef<HTMLDivElement | null>(null);
   const [novncPort, setNovncPort] = useState<string | undefined>();
+  const [docUrl, setDocUrl] = useState<string | undefined>();
   const [detailViewerExpanded, setDetailViewerExpanded] = useState(false);
   const [detailViewerTab, setDetailViewerTab] = useState<
-    "screenshots" | "live"
+    "screenshots" | "live" | "doc"
   >("live");
   const [hiddenMessageIndices, setHiddenMessageIndices] = useState<Set<number>>(
     new Set()
@@ -126,8 +127,9 @@ const RunView: React.FC<RunViewProps> = ({
     }
   }, [run.messages, run.status]);
 
-  // Effect to handle browser_address message
+  // Effect to handle browser_address and document messages
   useEffect(() => {
+    // Handle browser_address messages
     const browserAddressMessages = run.messages.filter(
       (msg: Message) => msg.config.metadata?.type === "browser_address"
     );
@@ -143,7 +145,39 @@ const RunView: React.FC<RunViewProps> = ({
       setShowDetailViewer(true);
       setIsDetailViewerMinimized(false);
     }
+
+    // Handle document messages
+    const documentMessages = run.messages.filter(
+      (msg: Message) => msg.config.metadata?.type === "document"
+    );
+    const lastDocumentMsg = documentMessages[documentMessages.length - 1];
+    // only update if docUrl is different from the current docUrl
+    if (
+      lastDocumentMsg &&
+      lastDocumentMsg.config.metadata?.docUrl !== docUrl
+    ) {
+      setDocUrl(lastDocumentMsg.config.metadata?.docUrl);
+      setDetailViewerTab("doc");
+      // Show DetailViewer when docUrl becomes available
+      setShowDetailViewer(true);
+      setIsDetailViewerMinimized(false);
+    }
   }, [run.messages]);
+
+  // Listen for explicit "show-doc" events (e.g., from file clicks) to display side doc iframe
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent<{ url: string }>;
+      if (custom.detail?.url) {
+        setDocUrl(custom.detail.url);
+        setDetailViewerTab("doc");
+        setShowDetailViewer(true);
+        setIsDetailViewerMinimized(false);
+      }
+    };
+    window.addEventListener("show-doc", handler as EventListener);
+    return () => window.removeEventListener("show-doc", handler as EventListener);
+  }, []);
 
   const isEditable =
     run.status === "awaiting_input" &&
@@ -572,12 +606,11 @@ const RunView: React.FC<RunViewProps> = ({
 
   return (
     <div
-      className="flex w-full gap-4 h-full overflow-y-auto scroll"
-      ref={threadContainerRef}
+      className="flex w-full gap-4 h-full overflow-hidden"
     >
       {/* Messages section */}
       <div
-        className={`items-start relative flex flex-col h-full ${
+        className={`items-start relative flex flex-col h-full overflow-hidden ${
           showDetailViewer &&
           novncPort !== undefined &&
           !isDetailViewerMinimized
@@ -587,8 +620,12 @@ const RunView: React.FC<RunViewProps> = ({
             : "w-full"
         } transition-all duration-300`}
       >
-        {/* Thread Section - use flex-1 for height, but remove overflow-y-auto */}
-        <div className="w-full flex-1">
+        {/* Thread Section - scrollable messages */}
+        <div
+          ref={threadContainerRef}
+          className="w-full flex-1 overflow-y-auto pr-2"
+          style={{ scrollbarGutter: "stable" }}
+        >
           {localMessages.length > 0 &&
             localMessages.map((msg: Message, idx: number) => {
               const isCurrentMessagePlan =
@@ -665,13 +702,11 @@ const RunView: React.FC<RunViewProps> = ({
           </div>
         </div>
 
-        {/* ChatInput - use sticky positioning to keep at bottom with full width */}
+        {/* ChatInput - separate non-scrolling footer */}
         <div
           ref={buttonsContainerRef}
-          className="sticky bottom-0 flex-shrink-0 w-full bg-background"
-          style={{
-            width: "100%", // Always take full width of parent
-          }}
+          className="flex-shrink-0 w-full bg-background"
+          style={{ width: "100%" }}
         >
           <ChatInput
             ref={chatInputRef}
@@ -706,18 +741,18 @@ const RunView: React.FC<RunViewProps> = ({
       </div>
 
       {/* Detail Viewer section */}
-      {isDetailViewerMinimized && novncPort !== undefined && (
+      {isDetailViewerMinimized && (novncPort !== undefined || docUrl !== undefined) && (
         <button
           onClick={() => setIsDetailViewerMinimized(false)}
           className="self-start sticky top-0 h-full inline-flex text-magenta-800 hover:text-magenta-900 cursor-pointer"
-          title="Show browser"
+          title={docUrl ? "Show document" : "Show browser"}
         >
           <Globe2 size={20} />
         </button>
       )}
 
       {showDetailViewer &&
-        novncPort !== undefined &&
+        (novncPort !== undefined || docUrl !== undefined) &&
         !isDetailViewerMinimized && (
           <div
             className={`${
@@ -741,6 +776,7 @@ const RunView: React.FC<RunViewProps> = ({
                   }))
                 }
                 novncPort={novncPort}
+                docUrl={docUrl}
                 onPause={onPause}
                 runStatus={run.status}
                 activeTab={detailViewerTab}

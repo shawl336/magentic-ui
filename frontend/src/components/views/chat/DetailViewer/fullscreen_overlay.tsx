@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import FeedbackForm from "./FeedbackForm";
 import { RcFile } from "antd/es/upload";
 import { IPlan } from "../../../types/plan";
+import { useTranslation } from "react-i18next";
 
 interface FullscreenOverlayProps {
   isVisible: boolean;
@@ -28,6 +29,7 @@ const FullscreenOverlay: React.FC<FullscreenOverlayProps> = ({
   runStatus,
 }) => {
   const [userFeedback, setUserFeedback] = useState("");
+  const { t, i18n } = useTranslation();
 
   // Lock body scroll and intercept all events
   useEffect(() => {
@@ -127,7 +129,7 @@ const FullscreenOverlay: React.FC<FullscreenOverlayProps> = ({
     if (onInputResponse) {
       if (runStatus === "awaiting_input") {
         const feedbackToSend =
-          userFeedback.trim() === "" ? "Resume" : userFeedback;
+          userFeedback.trim() === "" ? t("Resume") : userFeedback;
         onInputResponse(feedbackToSend, [], true);
       }
     }

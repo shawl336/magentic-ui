@@ -10,6 +10,7 @@ import { PlanAPI, SessionAPI } from "../../views/api";
 import PlanCard from "./PlanCard";
 import { IPlan } from "../../types/plan";
 import { Session } from "../../types/datamodel";
+import { useTranslation } from "react-i18next";
 
 interface PlanListProps {
   onTabChange?: (tabId: string) => void;
@@ -51,6 +52,7 @@ const PlanList: React.FC<PlanListProps> = ({
   onSelectSession,
   onCreateSessionFromPlan,
 }) => {
+  const { t, i18n } = useTranslation();
   const [plans, setPlans] = useState<IPlan[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,7 @@ const PlanList: React.FC<PlanListProps> = ({
       fetchPlans();
     } else {
       setLoading(false);
-      setError("Please sign in to view your plans");
+      setError(t("Please sign in to view your plans"));
     }
   }, [user?.email]);
 
@@ -110,7 +112,7 @@ const PlanList: React.FC<PlanListProps> = ({
   const handleUsePlan = async (plan: IPlan) => {
     try {
       message.loading({
-        content: "Creating new session from plan...",
+        content: t("Creating new session from plan..."),
         key: "sessionCreation",
       });
 
@@ -139,7 +141,7 @@ const PlanList: React.FC<PlanListProps> = ({
       setIsCreatingPlan(true);
 
       const newPlan = normalizePlanData(
-        { task: "New Plan", steps: [] },
+        { task: t("New Plan"), steps: [] },
         userId
       );
 
@@ -299,33 +301,33 @@ const PlanList: React.FC<PlanListProps> = ({
           }}
         >
           <div className="text-xl font-semibold text-primary">
-            Drop your plan file here to import
+            {t("Drop your plan file here to import")}
           </div>
         </div>
       )}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Your Saved Plans</h1>
+        <h1 className="text-2xl font-bold">{t("Your Saved Plans")}</h1>
         <div className="flex items-center gap-2 w-1/3">
-          <Tooltip title="Create a new empty plan">
+          <Tooltip title={t("Create a new empty plan")}>
             <Button
               icon={<PlusOutlined />}
               onClick={handleCreatePlan}
               className="flex items-center"
             >
-              Create
+              {t("Create")}
             </Button>
           </Tooltip>
-          <Tooltip title="Import a plan from a JSON file">
+          <Tooltip title={t("Import a plan from a JSON file")}>
             <Button
               icon={<UploadOutlined />}
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center"
             >
-              Import
+              {t("Import")}
             </Button>
           </Tooltip>
           <Input
-            placeholder="Search plans..."
+            placeholder={t("Search Plans...")}
             prefix={<SearchOutlined className="text-primary" />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -361,18 +363,18 @@ const PlanList: React.FC<PlanListProps> = ({
             <SearchOutlined
               style={{ fontSize: "48px", marginBottom: "16px" }}
             />
-            <p>No plans found matching "{searchTerm}"</p>
+            <p>{t("No plans found matching")} "{searchTerm}"</p>
             <Button
               type="link"
               onClick={() => setSearchTerm("")}
               className="mt-2"
             >
-              Clear search
+              {t("Clear search")}
             </Button>
           </div>
         ) : (
           <div className="col-span-3 flex flex-col items-center justify-center py-12 text-primary">
-            <p>No plans yet. Create one or import an existing plan.</p>
+            <p>{t("No plans yet. Create one or import an existing plan.")}</p>
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import SignInModal from "./signin";
 import SettingsModal from "./settings/SettingsModal";
 import logo from "../assets/logo.svg";
 import { Button } from "./common/Button";
+import { useTranslation } from "react-i18next";
 
 type ContentHeaderProps = {
   onMobileMenuToggle: () => void;
@@ -22,18 +23,19 @@ const ContentHeader = ({
   onToggleSidebar,
   onNewSession,
 }: ContentHeaderProps) => {
+  const { t, i18n } = useTranslation();
   const { user } = React.useContext(appContext);
   useConfigStore();
   const [isEmailModalOpen, setIsEmailModalOpen] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
   return (
-    <div className="sticky top-0 bg-primary">
+    <div className="sticky top-0 pl-2 pr-4 bg-primary">
       <div className="flex h-16 items-center justify-between">
         {/* Left side: Text and Sidebar Controls */}
         <div className="flex items-center">
           {/* Sidebar Toggle */}
-          <Tooltip title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}>
+          <Tooltip title={isSidebarOpen ? t("Close Sidebar") : t("Open Sidebar")}>
             <Button
               variant="tertiary"
               size="sm"
@@ -52,7 +54,7 @@ const ContentHeader = ({
           {/* New Session Button */}
           <div className="w-[40px]">
             {!isSidebarOpen && (
-              <Tooltip title="Create new session">
+              <Tooltip title={t("Create New Session")}>
                 <Button
                   variant="tertiary"
                   size="sm"
@@ -64,8 +66,8 @@ const ContentHeader = ({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            <img src={logo} alt="Magentic-UI Logo" className="h-10 w-10" />
-            <div className="text-primary text-2xl font-bold">Magentic-UI</div>
+            <img src={logo} alt="Magentic-UI Logo" className="h-20 w-20" />
+            <div className="text-primary text-2xl font-bold">{t("Magentic-UI")}</div>
           </div>
         </div>
 

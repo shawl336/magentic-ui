@@ -5,6 +5,7 @@ import { SessionEditorProps } from "./types";
 import { Team } from "../types/datamodel";
 import { teamAPI } from "./api";
 import { appContext } from "../../hooks/provider";
+import { useTranslation } from 'react-i18next';
 
 type FieldType = {
   name: string;
@@ -17,6 +18,7 @@ export const SessionEditor: React.FC<SessionEditorProps> = ({
   onCancel,
   isOpen,
 }) => {
+  const { t, i18n } = useTranslation();
   const [form] = Form.useForm();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,7 +96,7 @@ export const SessionEditor: React.FC<SessionEditorProps> = ({
 
   return (
     <Modal
-      title={session ? "Edit Session" : "Create Session"}
+      title={session ? t("Edit Session") : t("Edit Session")}
       open={isOpen}
       onCancel={onCancel}
       footer={null}
@@ -111,11 +113,11 @@ export const SessionEditor: React.FC<SessionEditorProps> = ({
         autoComplete="off"
       >
         <Form.Item<FieldType>
-          label="Session Name"
+          label={t("Session Name")}
           name="name"
           rules={[
-            { required: true, message: "Please enter a session name" },
-            { max: 100, message: "Session name cannot exceed 100 characters" },
+            { required: true, message: t("Please enter a session name") },
+            { max: 100, message: t("Session name cannot exceed 100 characters") },
           ]}
         >
           <Input />
@@ -123,9 +125,9 @@ export const SessionEditor: React.FC<SessionEditorProps> = ({
 
         <Form.Item className="flex justify-end mb-0">
           <div className="flex gap-2">
-            <Button onClick={onCancel}>Cancel</Button>
+            <Button onClick={onCancel}>{t("Please enter a session name")}</Button>
             <Button type="primary" htmlType="submit" disabled={hasNoTeams}>
-              {session ? "Update" : "Create"}
+              {session ? t("Update") : t("Create")}
             </Button>
           </div>
         </Form.Item>

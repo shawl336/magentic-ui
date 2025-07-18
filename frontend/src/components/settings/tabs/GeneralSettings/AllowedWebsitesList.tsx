@@ -2,7 +2,7 @@ import React from "react";
 import { Input, Switch, Button, Flex, Tag, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { Plus } from "lucide-react";
-
+import { useTranslation } from "react-i18next";
 interface AllowedWebsitesListProps {
   config: any;
   handleUpdateConfig: (changes: any) => void;
@@ -12,6 +12,7 @@ const AllowedWebsitesList: React.FC<AllowedWebsitesListProps> = ({
   config,
   handleUpdateConfig,
 }) => {
+  const { t, i18n } = useTranslation();
   const [websiteInput, setWebsiteInput] = React.useState("");
   const [cachedWebsites, setCachedWebsites] = React.useState<string[]>(config.allowed_websites || []);
   const [allowedlistEnabled, setAllowedlistEnabled] = React.useState(Boolean((config.allowed_websites || []).length));
@@ -40,16 +41,16 @@ const AllowedWebsitesList: React.FC<AllowedWebsitesListProps> = ({
     <Flex vertical gap="small">
       <Flex align="center" justify="space-between" wrap gap="small">
         <Flex align="center" justify="start" gap="small">
-          Allowed Websites List
-          <Tooltip title="When enabled, Magentic-UI will only be able to visit websites you add to the list below.">
+          {t("Allowed Websites List")}
+          <Tooltip title={t("When enabled, LLMs will only be able to visit websites you add to the list below.")}>
             <InfoCircleOutlined className="text-secondary hover:text-primary cursor-help" />
           </Tooltip>
         </Flex>
         {cachedWebsites.length === 0 && (
           <Switch
             checked={allowedlistEnabled}
-            checkedChildren="Restricted to List"
-            unCheckedChildren="All Websites Allowed"
+            checkedChildren={t("Restricted to List")}
+            unCheckedChildren={t("All Websites Allowed")}
             onChange={(checked) => {
               setAllowedlistEnabled(checked);
               if (!checked) {

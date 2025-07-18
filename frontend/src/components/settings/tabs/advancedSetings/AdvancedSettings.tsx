@@ -5,7 +5,7 @@ import { Button, Flex, Alert } from "antd";
 import { message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { validateAll } from "../../validation";
-
+import { useTranslation } from 'react-i18next';
 interface AdvancedConfigEditorProps {
   config: any;
   darkMode?: string;
@@ -17,6 +17,7 @@ const AdvancedConfigEditor: React.FC<AdvancedConfigEditorProps> = ({
   darkMode,
   handleUpdateConfig,
 }) => {
+  const { t, i18n } = useTranslation();
   const [errors, setErrors] = React.useState<string[]>([]);
   const [editorValue, setEditorValue] = React.useState(
     config ? yaml.dump(config) : ""
@@ -47,6 +48,8 @@ const AdvancedConfigEditor: React.FC<AdvancedConfigEditorProps> = ({
             return;
           }
           setEditorValue(yaml.dump(parsed));
+          // enable the 'Apply Changes' button
+          setHasUnsavedChanges(true);
         }
       } catch (e) {
         message.error("Failed to parse uploaded file.");
@@ -72,7 +75,7 @@ const AdvancedConfigEditor: React.FC<AdvancedConfigEditorProps> = ({
           icon={<UploadOutlined />}
           onClick={() => fileInputRef.current?.click()}
         >
-          Upload
+          {t("Upload")}
           <input
             ref={fileInputRef}
             type="file"
@@ -98,7 +101,7 @@ const AdvancedConfigEditor: React.FC<AdvancedConfigEditorProps> = ({
             }
           }}
         >
-          Apply Changes
+          {t("Apply Changes")}
         </Button>
         <Button
           danger
@@ -109,7 +112,7 @@ const AdvancedConfigEditor: React.FC<AdvancedConfigEditorProps> = ({
             setHasUnsavedChanges(false);
           }}
         >
-          Discard Changes
+          {t("Discard Changes")}
         </Button>
       </Flex>
 

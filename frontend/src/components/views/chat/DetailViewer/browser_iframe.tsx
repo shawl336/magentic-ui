@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import SecurityBanner from "./SecurityBanner";
+import { useTranslation } from "react-i18next";
 
 interface BrowserIframeProps {
   novncPort?: string;
@@ -32,6 +33,7 @@ const BrowserIframe: React.FC<BrowserIframeProps> = ({
   isControlMode = false,
   serverUrl,
 }) => {
+  const { t, i18n } = useTranslation();
 
   // Get the hostname of the current access address
   const currentHostname = window.location.hostname;
@@ -69,7 +71,7 @@ const BrowserIframe: React.FC<BrowserIframeProps> = ({
   if (!novncPort) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p>Waiting for browser session to start...</p>
+        <p>{t("Waiting for browser session to start...")}</p>
       </div>
     );
   }
@@ -125,7 +127,7 @@ const BrowserIframe: React.FC<BrowserIframeProps> = ({
             className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center cursor-pointer transition-opacity duration-300 ease-in-out"
             onClick={handleOverlayClick}
           >
-            <div className="text-white text-xl font-semibold">Take Control</div>
+            <div className="text-white text-xl font-semibold">{t("Take Control")}</div>
           </div>
         )}
     </div>

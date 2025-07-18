@@ -3,6 +3,7 @@ import { message, Spin, Tooltip } from "antd";
 import { appContext } from "../../../hooks/provider";
 import { PlanAPI } from "../../views/api";
 import { LightBulbIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
+import { useTranslation } from "react-i18next";
 
 interface LearnPlanButtonProps {
   sessionId: number;
@@ -17,6 +18,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
   userId,
   onSuccess,
 }) => {
+  const { t, i18n } = useTranslation();
   const [isLearning, setIsLearning] = useState(false);
   const [isLearned, setIsLearned] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
   // If already learned, show success message
   if (isLearned) {
     return (
-      <Tooltip title="This plan has been saved to your library">
+      <Tooltip title={t("This plan has been saved to your library")}>
         <div
           className={`inline-flex items-center px-3 py-1.5 rounded-md ${
             darkMode === "dark"
@@ -99,7 +101,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
           }`}
         >
           <CheckCircleIcon className="h-4 w-4 mr-1.5" />
-          <span className="text-sm font-medium">Plan Learned</span>
+          <span className="text-sm font-medium">{t("Plan Learned")}</span>
         </div>
       </Tooltip>
     );
@@ -108,7 +110,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
   // If learning, show spinner
   if (isLearning) {
     return (
-      <Tooltip title="Creating a plan from this conversation">
+      <Tooltip title={t("Creating a plan from this conversation")}>
         <button
           disabled
           className={`inline-flex items-center px-3 py-1.5 rounded-md transition-colors ${
@@ -118,7 +120,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
           } cursor-wait`}
         >
           <Spin size="small" className="mr-2" />
-          <span className="text-sm font-medium">Learning Plan...</span>
+          <span className="text-sm font-medium">{t("Learning Plan...")}</span>
         </button>
       </Tooltip>
     );
@@ -126,7 +128,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
 
   // Default state - ready to learn
   return (
-    <Tooltip title="Learn a reusable plan from this conversation and save it to your library">
+    <Tooltip title={t("Learn a reusable plan from this conversation and save it to your library")}>
       <button
         onClick={handleLearnPlan}
         disabled={!sessionId || !effectiveUserId}
@@ -145,7 +147,7 @@ export const LearnPlanButton: React.FC<LearnPlanButtonProps> = ({
             darkMode === "dark" ? "text-blue-400" : "text-blue-800"
           }`}
         />
-        <span className="text-sm font-medium">Learn Plan</span>
+        <span className="text-sm font-medium">{t("Learn Plan")}</span>
       </button>
     </Tooltip>
   );

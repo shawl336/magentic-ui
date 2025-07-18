@@ -3,6 +3,8 @@ import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import BrowserIframe from "./browser_iframe";
 import { Button } from "antd";
+import { useTranslation } from "react-i18next";
+
 interface BrowserModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -27,6 +29,7 @@ const BrowserModal: React.FC<BrowserModalProps> = (props) => {
     isControlMode = false,
     onTakeControl,
   } = props;
+  const { t, i18n } = useTranslation();
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
   const modalIframeId = "modal-browser-iframe";
 
@@ -93,7 +96,7 @@ const BrowserModal: React.FC<BrowserModalProps> = (props) => {
                   className="font-medium shadow-md flex justify-center items-center"
                   size="large"
                 >
-                  Give control back to Magentic-UI 
+                  {t("Give control back to Agents")}
                 </Button>
               )}
             </div>

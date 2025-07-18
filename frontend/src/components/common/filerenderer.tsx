@@ -12,9 +12,11 @@ import MarkdownRenderer from "./markdownrender";
 import { ClickableImage } from "../views/atoms";
 import { AgentMessageConfig } from "../types/datamodel";
 import { getServerUrl } from "../utils";
+import DocumentIframe from "../views/chat/DetailViewer/document_iframe";
 
 // Types
-type FileType = "image" | "code" | "text" | "pdf";
+type FileType = "image" | "code" | "text" | "pdf" | "docx";
+const KnownFileTypes = ["image" , "code" , "text" , "pdf" , "docx"];
 
 interface FileInfo {
   path: string;
@@ -46,6 +48,7 @@ const FILE_ICONS: Record<string, React.ElementType> = {
   code: Code,
   text: FileTextIcon,
   pdf: FileIcon,
+  docx: FileIcon,
   unknown: File,
 };
 
@@ -89,6 +92,10 @@ const FILE_EXTENSIONS_MAP: Record<string, FileType> = {
 
   // PDF
   pdf: "pdf",
+
+  // Docx-like
+  docx: "docx",
+  doc: "docx"
 };
 
 // Modal component for displaying file content
@@ -237,6 +244,15 @@ const FileModal: React.FC<FileModalProps> = ({
             className="w-full h-[70vh]"
             frameBorder="0"
           />
+        </div>
+      );
+    }
+
+    // For docx files, use the DocumentIframe component
+    else if (file.type === "docx") {
+      return (
+        <div className="flex flex-col h-[70vh]">
+          <DocumentIframe docUrl={content || ""} className="w-full h-full" />
         </div>
       );
     }
@@ -451,7 +467,7 @@ const RenderFile: React.FC<RenderFileProps> = ({ message }) => {
         const processedFiles = Array.isArray(parsedFiles)
           ? parsedFiles.map((file) => {
               // If the file already has a valid type, keep it
-              if (["image", "code", "text", "pdf"].includes(file.type)) {
+              if (KnownFileTypes.includes(file.type)) {
                 return file;
               }
 
@@ -475,6 +491,19 @@ const RenderFile: React.FC<RenderFileProps> = ({ message }) => {
   }, [message]);
 
   const handleFileClick = (file: FileInfo): void => {
+    // Special handling for docx: display in side doc iframe instead of modal
+    if (file.type === "docx") {
+      const rawUrl =
+        getServerUrl().replace("/api", "") +
+        `/${file.short_path || file.path || file.name}`;
+
+      // Notify layout to show the side doc viewer
+      window.dispatchEvent(
+        new CustomEvent("show-doc", { detail: { url: rawUrl } })
+      );
+      return;
+    }
+
     setSelectedFile(file);
     setIsModalOpen(true);
     setFileContent(null); // Reset content before loading new file
