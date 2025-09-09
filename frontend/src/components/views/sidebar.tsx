@@ -210,7 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return (
-      <div className="h-full border-r border-secondary bg-secondary px-4">
+      <div className="h-full w-64 border-r border-secondary bg-secondary px-4 flex-shrink-0">
         <div className="mb-4 pt-2">
           <SubMenu
             items={[
