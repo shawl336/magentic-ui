@@ -8,7 +8,13 @@ from typing import AsyncGenerator, Any
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from loguru import logger
+# from loguru import logger
+import logging
+from autogen_agentchat import TRACE_LOGGER_NAME
+
+logger = logging.getLogger(TRACE_LOGGER_NAME)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
 
 from ...version import VERSION
 from .config import settings
@@ -36,12 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Lifecycle manager for the FastAPI application.
     Handles initialization and cleanup of application resources.
     """
-    import logging
-    from autogen_agentchat import TRACE_LOGGER_NAME
 
-    logger = logging.getLogger(TRACE_LOGGER_NAME)
-    logger.addHandler(logging.StreamHandler())
-    logger.setLevel(logging.INFO)
     try:
         # Load the config if provided
         config: dict[str, Any] = {}
