@@ -22,7 +22,7 @@ WEB_SURFER_SYSTEM_MESSAGE = """
 - scroll_up: 将页面viewport向上滑动一个页面
 - scroll_down: 将页面viewport向下滑动一个页面
 - visit_url: 直接导航到提供的url地址
-- web_search: 通过Bing.com网址进行搜索
+- web_search: 通过网络搜索引擎进行搜索
 - history_back: 回退到浏览器历史的上一个页面
 - refresh_page: 刷新当前页面
 - keypress: 有序地点击一个或多个键盘按键
@@ -116,7 +116,7 @@ WEB_SURFER_NO_TOOLS_PROMPT = """
 - 工具名字："scroll_up", tool_args: {{}} - 将页面viewport向上滑动一个页面。
 - 工具名字："scroll_down", tool_args: {{}} - 将页面viewport向下滑动一个页面。
 - 工具名字："visit_url", tool_args: {{"url": str, "require_approval": bool}} - 直接导航到提供的url地址。"url"参数表示导航地址。
-- 工具名字："web_search", tool_args: {{"query": str, "require_approval": bool}} - 通过Bing.com网址进行搜索。"query"参数表示被搜索内容。
+- 工具名字："web_search", tool_args: {{"query": str, "require_approval": bool}} - 通过网络搜索引擎进行搜索。"query"参数表示被搜索内容。
 - 工具名字："answer_question", tool_args: {{"question": str}} - 用来回答关于当前页面内容的问题。"question"参数表示关于当前页面内容的问题。
 - 工具名字："history_back", tool_args: {{"require_approval": bool}} - 回退到浏览器历史的上一个页面。
 - 工具名字："refresh_page", tool_args: {{"require_approval": bool}} - 刷新当前页面。
@@ -145,7 +145,7 @@ WEB_SURFER_NO_TOOLS_PROMPT = """
     - 如果操作无法取得进展，或被困住了，尝试其他替代方法
     - 非常重点注意：如果某个操作出错或者失败，不要重复这个动作
     - 填表单时，确保滑动网页窗口来保证你填完了完整的表单
-    - 有些时候在搜索平台上搜索做某件事情的大致方法比搜索具体的细节更有效
+    - 有些时候在宽泛地搜索如何做某件事情比搜索具体的细节更有效
     
 请遵循如下JSON schema输出纯JSON格式的答案。输出的JSON对象必须格式正确且可以被解析。不要输出除JSON外的任何内容，再次强调一定要遵循如下JSON schema，不要有偏差。
 

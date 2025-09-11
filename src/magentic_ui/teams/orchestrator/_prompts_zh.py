@@ -135,6 +135,7 @@ def get_orchestrator_system_message_planning(
             仅对于**SentinelPlanStep**：
             - **details** (string): details字段描述智能体在此步骤要执行的单一操作。
               * 比如，如果次SentinelPlanStep的操作是"持续检查autogen仓库直到它有7k的星数"，那么details字段内容应该是"检查autogen仓库的的星星数量"。
+              * 如果任务需要检查特定的URL, 网站或仓库, 请在details字段中包含完整的URL。例如: "检查https://github.com/magentic-ai/magentic-ui仓库的星星数量" 或 "检查https://example.com/api/status是否返回200状态码"
               * 重点注意，不要在details字段提及"监测"或"等待"等描述。系统会自动根据sleep_duration和condition字段来执行监测和等待操作。
             
             - **agent_name** (string):
@@ -445,6 +446,7 @@ def get_orchestrator_system_message_planning_autonomous(
             仅对于**SentinelPlanStep**：
             - **details** (string): details字段描述智能体在此步骤要执行的单一操作。
               * 比如，如果次SentinelPlanStep的操作是"持续检查autogen仓库直到它有7k的星数"，那么details字段内容应该是"检查autogen仓库的的星星数量"。
+              * 如果任务需要检查特定的URL, 网站或仓库, 请在details字段中包含完整的URL。例如: "检查https://github.com/magentic-ai/magentic-ui仓库的星星数量" 或 "检查https://example.com/api/status是否返回200状态码"
               * 重点注意，不要在details字段提及"监测"或"等待"等描述。系统会自动根据sleep_duration和condition字段来执行监测和等待操作。
             
             - **agent_name** (string):
@@ -749,6 +751,7 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
             仅对于**SentinelPlanStep**：
             - **details** (string): details字段描述智能体在此步骤要执行的单一操作。
               * 比如，如果次SentinelPlanStep的操作是"持续检查autogen仓库直到它有7k的星数"，那么details字段内容应该是"检查autogen仓库的的星星数量"。
+              * 如果任务需要检查特定的URL, 网站或仓库, 请在details字段中包含完整的URL。例如: "检查https://github.com/magentic-ai/magentic-ui仓库的星星数量" 或 "检查https://example.com/api/status是否返回200状态码"
               * 重点注意，不要在details字段提及"监测"或"等待"等描述。系统会自动根据sleep_duration和condition字段来执行监测和等待操作。
             
             - **agent_name** (string):
@@ -931,9 +934,11 @@ def get_orchestrator_progress_ledger_prompt(
         
         - is_current_step_complete: 当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)
         - need_to_replan: 我们是否需要创建一个新的计划？("True":用户提出了新的请求，但当前的计划无法解决这个新请求，或者我们陷入一个死循环、遇到到了严重阻碍或者当前的方法是无效，从而导致用户的请求无法完成；"False":我们可以继续执行当前的计划。 大多数情况下都不需要重新创建新的任务。)
-        - instruction_or_question: 提供当前步骤相关的完整任务和计划上下文信息以及完成当前步骤的指导。同时提供非常详细的完成当前步骤的思考过程。如果下一步智能体是用户，直接已问题的形式向用户提问，否则，描述你将如何去完成这个步骤。
+        - instruction_or_question: 提供当前步骤相关的完整任务和计划上下文信息以及完成当前步骤的指导。同时提供非常详细的完成当前步骤的思考过程。如果下一步智能体是用户，直接向用户提一个简短的问题，否则，描述你将如何去完成这个步骤。
+        - instruction_or_question: Provide complete instructions to accomplish the current step with all context needed about the task and the plan. Provide a very detailed reasoning chain for how to complete the step. If the next agent is the user, pose it directly as a question that is short. Otherwise pose it as something you will do.
         - agent_name: 从当前团队的成员列表 "{names}" 中决定谁来完成当前的任务步骤。
-        - progress_summary: 总结目前为止收集到的能够帮助完成计划的信息。 包含任何的事实依据、有道理的猜测或者其他已经都到的信息。 收集并维护之前步骤采集到的所有信息。
+        - progress_summary: 用简短的句子向用户总结目前为止的执行进度（最多两句话，最好是一句话），但是要提供足够的信息让用户知道已经完成了什么，什么完成的好，什么完成的不好。
+        - progress_summary: Summarize the progress made so far to the user in a short way (maximum two sentences, preferably one sentence) but providing enough information to the user to know what has been completed and what is going well and what is not going well if any.
 
     重点注意: 一定要遵循用户之前发送的任何要求和信息。
 
@@ -955,7 +960,7 @@ def get_orchestrator_progress_ledger_prompt(
             "answer": string,
             "agent_name": string (包含在{{names}}列表中，负责完成当前步骤的智能体名字)
         }},
-        "progress_summary": "截止到目前，计划执行进度的总结"
+        "progress_summary": "截止到目前，计划执行进度的总结，最多两句话，最好是一句话"
 
     }}
     ```

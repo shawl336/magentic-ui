@@ -364,7 +364,7 @@ class RoundRobinGroupChat(BaseGroupChat, Component[RoundRobinGroupChatConfig]):
     async def close(self) -> None:
         """Close all resources."""
         # Prepare a list of closable agents
-        closable_agents: List[RoundRobinGroupChatManager | ChatAgent | Team] = [
+        closable_agents: List[RoundRobinGroupChatManager | ChatAgent] = [
             agent for agent in self._participants if hasattr(agent, "close")
         ]
         # Check if we can close the orchestrator
