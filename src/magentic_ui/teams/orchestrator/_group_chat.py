@@ -14,7 +14,7 @@ from autogen_core import (
     CancellationToken,
 )
 from autogen_agentchat import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
-from autogen_agentchat.base import ChatAgent, TerminationCondition, TaskResult
+from autogen_agentchat.base import ChatAgent, TerminationCondition, TaskResult, Team
 from autogen_agentchat.state import TeamState, BaseState
 from autogen_agentchat.teams import BaseGroupChat
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage, MessageFactory
@@ -56,7 +56,7 @@ class GroupChat(BaseGroupChat, Component[GroupChatConfig]):
 
     def __init__(
         self,
-        participants: List[ChatAgent],
+        participants: List[ChatAgent | Team],
         model_client: ChatCompletionClient,
         orchestrator_config: OrchestratorConfig,
         runtime: AgentRuntime | None = None,
@@ -65,6 +65,8 @@ class GroupChat(BaseGroupChat, Component[GroupChatConfig]):
         memory_provider: MemoryControllerProvider | None = None,
     ):
         super().__init__(
+            "GroupChat",
+            "A group chat that orchestrates the conversation between multiple participants.",
             participants,
             group_chat_manager_name="Orchestrator",
             group_chat_manager_class=Orchestrator,
@@ -117,6 +119,7 @@ class GroupChat(BaseGroupChat, Component[GroupChatConfig]):
         *,
         task: str | BaseChatMessage | Sequence[BaseChatMessage] | None = None,
         cancellation_token: CancellationToken | None = None,
+        output_task_messages: bool = False,
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | TaskResult, None]:
         async for message in super().run_stream(
             task=task, cancellation_token=cancellation_token
@@ -229,7 +232,7 @@ class GroupChat(BaseGroupChat, Component[GroupChatConfig]):
         )
 
     @property
-    def participants(self) -> List[ChatAgent]:
+    def participants(self) -> List[ChatAgent | Team]:
         """
         Get the list of participants in the group chat.
 
