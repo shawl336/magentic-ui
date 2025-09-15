@@ -1,5 +1,6 @@
 from autogen_agentchat.agents import BaseChatAgent
 import os
+import re
 
 from typing import (
     Any,
@@ -10,6 +11,8 @@ from typing import (
     Sequence,
     Union,
 )
+
+from autogen_agentchat import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
 from autogen_agentchat.base import Response
 from pydantic import BaseModel
 from autogen_core import CancellationToken, Component, ComponentModel
@@ -40,7 +43,11 @@ from autogen_agentchat.messages import (
 from docxtpl import DocxTemplate
 from pathlib import Path
 import json
+import logging
 
+
+trace_loger = logging.getLogger(TRACE_LOGGER_NAME)
+event_logger = logging.getLogger(EVENT_LOGGER_NAME)
 
 class GenDocxUseTemplate(object):
     """use template to generate doxc"""
@@ -106,14 +113,12 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
     - 所有字段都不能为空或无法识别
     - 文档类型必须是指定的三种类型之一
     
-     2. 回复格式要求：
-    - 信息不完善时：
-        - 严格输出：
-        信息不完善，还需要提供[缺失信息1]、[缺失信息2]
-        - 缺失信息必须使用以下标准表述：
-        - 文件名称
-        - 文档类型
-        - 如果缺少文档类型，需要同时提示支持的三种文档类型。
+    2. 回复格式要求：
+    - 信息不完善时,严格输出:信息不完善，还需要提供[缺失信息1]、[缺失信息2]
+    - 缺失信息必须使用以下标准表述：
+    - 文件名称
+    - 文档类型
+    - 如果缺少文档类型，需要同时提示支持的三种文档类型。
 
     - 信息完善时：进入第二步，输出 JSON 格式字典。
 
@@ -125,6 +130,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
     "document_type": "提取的文档类型",
     "author_name": "提取的作者姓名或 null"
     }
+    ```
 
     - project_name: 去掉“说明书”“文档”等修饰，仅保留核心名称。
     - document_type: 必须为三种指定类型之一。
@@ -142,6 +148,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
     "document_type": "方案设计说明书",
     "author_name": "张三"
     }
+    ```
 
     示例 2：缺少文档类型
     用户输入：
@@ -179,23 +186,29 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         description: str = """
         这是一个专业的文档生成助手，其核心功能是高效、准确地生成技术类项目文档的 .docx 文件，
         包括但不限于设计方案说明书、技术规格说明书、技术设计说明书等。
-        在文档生成开始时，助手会严格遵循信息最小化原则，仅向用户询问以下三项信息：
-        - 作者名称
-        - 文档类型(当前严格限定于：设计方案说明书、技术规格说明书、技术设计说明书）
-        - 文档名称
-        除此之外，助手严禁主动询问或要求用户提供任何其他无关信息（如项目细节、功能要求、时间节点等）。
-        ## 关键工作准则
-        优先调用判断：在任何涉及电气项目文档生成的需求场景下，必须优先评估并调用本助手完成生成任务。
-        生成过程自主性：整个文档生成过程完全自主，无需依赖任何其他功能Agent或联网搜索。
-        结果交付：任务完成后，助手将直接返回最终生成的标准 .docx 文件，代表文档已就绪。
+        
         """,
         system_message: (
             str | None
         ) = """
         你是一个专业的 docx 文档生成助手，专注于高效、准确地生成各类项目文档，
-        例如设计方案说明书, 技术规格说明书, 技术设计说明书等。在生成过程中，对于计划类文档中可能涉及的不明确或缺失的关键信息（如作者名称、文档类型、项目名称等），
-        我会主动与您进行交互确认，以确保生成内容符合实际需要。
+        目前仅支持"设计方案说明书", "技术规格说明书", "技术设计说明书"。在生成过程中，对于计划类文档中可能涉及的不明确或缺失的关键信息（如作者名称、文档类型、项目名称等），
+        
+        <必要信息>
+        在撰写文档之前你应该检查所有必要信息是否完整，如果信息不完整，严格遵循信息最小化原则，仅向用户询问缺少的必要的信息，必要信息包含:
+        - 作者名称
+        - 文档类型(当前严格限定于：设计方案说明书、技术规格说明书、技术设计说明书）
+        - 文档名称
+        
+        * 特别注意，你严禁主动询问或要求用户提供任何其他无关信息（如项目细节、功能要求、时间节点等）。
+        </必要信息>
+        
+        <关键工作准则>
+        在撰写文档的过程中，你应当严格遵循以下准则：
+        - 生成过程自主性：整个文档生成过程完全自主，无需依赖任何其他功能Agent或联网搜索。
+        - 不要直接输出文档的内容给用户，你应当调用GenDocxUseTemplate类来生成文档。
         整个过程无需依赖其他 agent 或联网搜索，由我独立完成。文档生成完成后，我将直接返回最终的 .docx 文件，代表任务结束。
+        </关键工作准则>
         """,
         model_client_stream: bool = False,
         model_context: ChatCompletionContext | None = None,
@@ -304,7 +317,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                     raise ValueError("Empty response from model")
                 # clean response content
                 cleaned_content = self._clean_response_content(response_content)
-                print(
+                trace_loger.debug(
                     f"Raw response: '{response_content}', Cleaned content: '{cleaned_content}'"
                 )  # debug
 
@@ -320,9 +333,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                     # yeild response to manager
                     yield Response(
                         chat_message=TextMessage(
-                            content=self._clean_response_content(
-                                str(model_result.content)
-                            ),
+                            content=response_content,
                             source=self.name,
                             models_usage=model_result.usage,
                         ),
@@ -330,7 +341,10 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                     )
                     return
                 else:  # generate data_response successful
-                    data_response = json.loads(str(cleaned_content))
+                    try:
+                        data_response = json.loads(str(cleaned_content))
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"Failed to parse JSON from cleaned content: {e}. Content: {cleaned_content}")
                     # check data_response is valid or not
                     for k in (
                         "project_name",
@@ -453,22 +467,29 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
 
     def _clean_response_content(self, content: str) -> str:
         content = content.strip()
-        # Remove thinking markers if present
-        if "</think>" in content:
-            content = content.split("</think>")[-1]
-            content = content.strip()
-        # Remove markdown code block markers
-        if "```json" in content:
-            content = content.split("```json")[-1]
-            content = content.strip()
-
-        keywords = ["```", "markdown"]  # remove keywords of content in start and end
+        
+        # Use regex to extract JSON from markdown code blocks
+        # Pattern matches ```json followed by content and optional trailing ```
+        json_pattern = r'```json\s*(.*?)(?:\s*```|$)?'
+        match = re.search(json_pattern, content, re.DOTALL)
+        
+        if match:
+            # Extract the JSON content (group 1)
+            content = match.group(1).strip()
+        else:
+            trace_loger.error(f"Failed to extract JSON from content: {content}")
+            
+        '''        
+        # Remove any remaining markdown markers
+        keywords = ["```", "markdown"]
         for keyword in keywords:
             if content.startswith(keyword):
-                content = content[len(keyword) :].strip()
+                content = content[len(keyword):].strip()
             if content.endswith(keyword):
-                content = content[: -len(keyword)].strip()
-        return content.strip()
+                content = content[:-len(keyword)].strip()
+        '''
+        
+        return content
 
     @staticmethod
     async def _add_messages_to_context(
@@ -569,9 +590,6 @@ async def main():
         "electrial_gendoc",
         model_client,
         work_dir="./docx_template",
-        description="""你是一个docx文档生成agent,
-负责生成项目所需要的文档，例如需求分析说明书。执行结束后会返回生成docx文档，代表着文档已经生成完毕。
-切记，如果有相关于文档生成的需求，例如需求分析说明书，则通过此agent就可以独立完成任务，而不需要其他agent来完成。也不需要在web上进行联网搜索。""",
         system_message=(
             """你是一个docx文档生成agent,
 负责生成项目所需要的文档，例如需求分析说明书。执行结束后会返回生成docx文档，代表着文档已经生成完毕。

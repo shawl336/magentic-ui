@@ -172,7 +172,7 @@ export default function ChatView({
         setActiveSocket(null);
         activeSocketRef.current = null;
 
-        // Restore previously selected MCP servers from session
+        // Restore previously selected MCP servers from session or initialize with all available
         if (session.selected_mcp_configs && session.selected_mcp_configs.length > 0) {
           // Extract server names from saved configs for UI state
           const serverNames = session.selected_mcp_configs.map(config => 
@@ -785,31 +785,31 @@ export default function ChatView({
               mcp_agent_configs: mcpConfigsToUse
             };
           } else {
-            // No MCP servers selected - use empty array and save empty state
-            mcpConfigsToUse = [];
-            savedMcpConfigs = [];
+            // No MCP servers explicitly selected - use all available MCP servers by default
+            mcpConfigsToUse = currentSettings.mcp_agent_configs;
+            savedMcpConfigs = currentSettings.mcp_agent_configs;
             
-            // Save empty selection to session
+            // Save all MCP configs to session as default behavior
             if (session?.id) {
               try {
                 await sessionAPI.updateSession(session.id, {
-                  selected_mcp_configs: []
+                  selected_mcp_configs: currentSettings.mcp_agent_configs
                 }, user.email);
                 
                 // Update local session state
                 onSessionNameChange({
                   id: session.id,
-                  selected_mcp_configs: []
+                  selected_mcp_configs: currentSettings.mcp_agent_configs
                 });
               } catch (error) {
-                console.error("Failed to save empty MCP configs to session:", error);
+                console.error("Failed to save default MCP configs to session:", error);
               }
             }
             
-            // Use empty MCP configs
+            // Use all available MCP configs as default
             currentSettings = {
               ...currentSettings,
-              mcp_agent_configs: []
+              mcp_agent_configs: mcpConfigsToUse
             };
           }
           
