@@ -6,6 +6,7 @@ from docker.errors import DockerException, ImageNotFound
 
 BROWSER_IMAGE_ENV_VAR = "MAGENTIC_UI_BROWSER_IMAGE"
 PYTHON_IMAGE_ENV_VAR = "MAGENTIC_UI_PYTHON_IMAGE"
+CODING_IMAGE_ENV_VAR = "MAGENTIC_UI_CODING_IMAGE"
 
 DOCKER_REGISTRY = "ghcr.io/microsoft"
 BROWSER_IMAGE = os.getenv(
@@ -14,7 +15,9 @@ BROWSER_IMAGE = os.getenv(
 PYTHON_IMAGE = os.getenv(
     PYTHON_IMAGE_ENV_VAR, f"{DOCKER_REGISTRY}/magentic-ui-python-env:0.0.1"
 )
-
+CODING_IMAGE = os.getenv(
+    CODING_IMAGE_ENV_VAR, f"gemini_mcp:latest"
+)
 
 def check_docker_running() -> bool:
     try:

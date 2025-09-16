@@ -382,7 +382,6 @@ class Orchestrator(BaseGroupChatManager):
             metadata=metadata or {"internal": internal_str},
         )
 
-        logger.info("publishing message", str(content))
         await self.publish_message(
             GroupChatMessage(message=message),
             topic_id=DefaultTopicId(type=self._output_topic_type),

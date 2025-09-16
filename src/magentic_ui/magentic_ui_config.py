@@ -33,6 +33,7 @@ class ModelClientConfigs(BaseModel):
     orchestrator: Optional[Union[ComponentModel, Dict[str, Any]]] = None
     web_surfer: Optional[Union[ComponentModel, Dict[str, Any]]] = None
     coder: Optional[Union[ComponentModel, Dict[str, Any]]] = None
+    coding_agent: Optional[Union[ComponentModel, Dict[str, Any]]] = None
     file_surfer: Optional[Union[ComponentModel, Dict[str, Any]]] = None
     action_guard: Optional[Union[ComponentModel, Dict[str, Any]]] = None
 

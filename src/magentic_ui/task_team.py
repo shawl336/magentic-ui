@@ -5,7 +5,7 @@ from autogen_agentchat.base import ChatAgent, Team
 from autogen_core import ComponentModel
 from autogen_core.models import ChatCompletionClient
 
-from .agents import USER_PROXY_DESCRIPTION, CoderAgent, FileSurfer, WebSurfer
+from .agents import USER_PROXY_DESCRIPTION, CoderAgent, FileSurfer, WebSurfer, CodingAgent
 from .agents import ElectrialcalDocGenAgent
 from .agents.mcp import McpAgent
 from .agents.users import DummyUserProxy, MetadataUserProxy
@@ -24,6 +24,7 @@ from .teams.orchestrator.orchestrator_config import OrchestratorConfig
 from .tools.playwright.browser import get_browser_resource_config
 from .types import RunPaths
 from .utils import get_internal_urls
+from .tools.mcp import AggregateMcpWorkbench
 
 
 async def get_task_team(
@@ -56,7 +57,7 @@ async def get_task_team(
                 else ModelClientConfigs.get_default_action_guard_config()
             )
         return ChatCompletionClient.load_component(model_client_config)
-
+    
     if not magentic_ui_config.inside_docker:
         assert (
             paths.external_run_dir == paths.internal_run_dir
@@ -219,6 +220,27 @@ async def get_task_team(
             approval_guard=approval_guard,
         )
 
+    # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
+    model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
+    
+    def get_mcp_tools():
+        from .tools.mcp import NamedMcpServerParams
+        from autogen_ext.tools.mcp import SseServerParams
+        
+        coding_tool = NamedMcpServerParams(server_name="coding_agent", 
+                                           server_params=SseServerParams(url="http:127.0.0.1:18100/sse"))
+        return coding_tool
+    # coding_tool = get_mcp_tools(magentic_ui_config.model_client_configs.coding_agent)
+
+    coding_agent = CodingAgent(
+        name="coding_agent",
+        model_client=model_client_coder,
+        coding_tool=get_mcp_tools(),
+        work_dir=paths.internal_root_dir,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+    )
+    
     # Setup any mcp_agents
     mcp_agents: List[McpAgent] = [
         # TODO: Init from constructor?
@@ -256,7 +278,9 @@ async def get_task_team(
         bind_dir=paths.external_run_dir,
         model_client_stream = True,
     )
-    team_participants.extend([electrical_gendoc])
+    
+    # custom agents
+    team_participants.extend([electrical_gendoc, coding_agent])
     team = GroupChat(
         name="task_team",
         description="A team of agents that can help with the task",
