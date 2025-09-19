@@ -16,6 +16,7 @@ from autogen_agentchat.messages import (
     TextMessage,
     ToolCallExecutionEvent,
     ToolCallRequestEvent,
+    UserInputRequestedEvent,
 )
 from ....input_func import InputFuncType, InputRequestType
 from autogen_core import CancellationToken
@@ -595,6 +596,7 @@ class WebSocketManager:
                     BaseTextChatMessage,
                     ToolCallRequestEvent,
                     ToolCallExecutionEvent,
+                    UserInputRequestedEvent,
                 ),
             ):
                 return {"type": "message", "data": message.model_dump(mode="json")}

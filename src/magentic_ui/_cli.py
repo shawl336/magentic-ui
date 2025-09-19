@@ -231,19 +231,21 @@ async def get_team(
             )
 
     # sets the configurations for each different agent
-    model_client_configs = ModelClientConfigs(
-        orchestrator=client_config_dict.get("orchestrator_client", None),
-        web_surfer=client_config_dict.get("web_surfer_client", None),
-        coder=client_config_dict.get("coder_client", None),
-        file_surfer=client_config_dict.get("file_surfer_client", None),
-        action_guard=client_config_dict.get("action_guard_client", None),
+    model_client_configs = client_config_dict.get("model_client_configs", {})
+    model_client_from_config_file = ModelClientConfigs(
+        orchestrator=model_client_configs.get("orchestrator", None),
+        web_surfer=model_client_configs.get("web_surfer", None),
+        coder=model_client_configs.get("coder", None),
+        coding_agent=model_client_configs.get("coding_agent", None),
+        file_surfer=model_client_configs.get("file_surfer", None),
+        action_guard=model_client_configs.get("action_guard", None),
     )
 
     mcp_agents = mcp_agents or []
     log_debug("Model client configs created for agents", debug)
 
     magentic_ui_config = MagenticUIConfig(
-        model_client_configs=model_client_configs,
+        model_client_configs=model_client_from_config_file,
         mcp_agent_configs=mcp_agents,
         cooperative_planning=cooperative_planning,
         autonomous_execution=autonomous_execution,

@@ -30,6 +30,7 @@ model_client_configs:
   coder: *ref
   file_surfer: *ref
   action_guard: *ref
+  coding_agent: *ref
 default_model:
   provider: OpenAIChatCompletionClient
   config:

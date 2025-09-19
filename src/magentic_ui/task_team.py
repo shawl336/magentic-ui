@@ -24,7 +24,6 @@ from .teams.orchestrator.orchestrator_config import OrchestratorConfig
 from .tools.playwright.browser import get_browser_resource_config
 from .types import RunPaths
 from .utils import get_internal_urls
-from .tools.mcp import AggregateMcpWorkbench
 
 
 async def get_task_team(
@@ -222,21 +221,19 @@ async def get_task_team(
 
     # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
     model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
-    
-    def get_mcp_tools():
+    def get_coding_mcp_tools():
         from .tools.mcp import NamedMcpServerParams
         from autogen_ext.tools.mcp import SseServerParams
         
-        coding_tool = NamedMcpServerParams(server_name="coding_agent", 
-                                           server_params=SseServerParams(url="http:127.0.0.1:18100/sse"))
-        return coding_tool
-    # coding_tool = get_mcp_tools(magentic_ui_config.model_client_configs.coding_agent)
+        coding_tool = NamedMcpServerParams(server_name="gemini_cli", 
+                                           server_params=SseServerParams(url="http://localhost:18100/sse"))
+        return [coding_tool]
 
     coding_agent = CodingAgent(
         name="coding_agent",
         model_client=model_client_coder,
-        coding_tool=get_mcp_tools(),
-        work_dir=paths.internal_root_dir,
+        coding_tools=get_coding_mcp_tools(),
+        app_dir=paths.internal_root_dir, # internal_root_dir is the app_dir, e.g. ~/magentic_ui
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
     )

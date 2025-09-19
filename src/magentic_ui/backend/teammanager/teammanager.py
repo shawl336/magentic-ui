@@ -194,18 +194,21 @@ class TeamManager:
             # Logic here: we first see if the config file passed to magentic-ui has valid configs for all clients
             # If Yes: this takes precedent over the UI LLM config and is passed to magentic-ui team
             # If No: we disregard it and use the UI LLM config
+            model_client_configs = self.config.get("model_client_configs", {})
             model_client_from_config_file = ModelClientConfigs(
-                orchestrator=self.config.get("orchestrator_client", None),
-                web_surfer=self.config.get("web_surfer_client", None),
-                coder=self.config.get("coder_client", None),
-                file_surfer=self.config.get("file_surfer_client", None),
-                action_guard=self.config.get("action_guard_client", None),
+                orchestrator=model_client_configs.get("orchestrator", None),
+                web_surfer=model_client_configs.get("web_surfer", None),
+                coder=model_client_configs.get("coder", None),
+                coding_agent=model_client_configs.get("coding_agent", None),
+                file_surfer=model_client_configs.get("file_surfer", None),
+                action_guard=model_client_configs.get("action_guard", None),
             )
             is_complete_config_from_file = all(
                 [
                     model_client_from_config_file.orchestrator,
                     model_client_from_config_file.web_surfer,
                     model_client_from_config_file.coder,
+                    model_client_from_config_file.coding_agent,
                     model_client_from_config_file.file_surfer,
                     model_client_from_config_file.action_guard,
                 ]
