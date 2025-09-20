@@ -539,6 +539,10 @@ class Orchestrator(BaseGroupChatManager):
         """Resume the group chat manager."""
         self._state.is_paused = False
 
+    '''
+    lx-todo: handle the GroupChatTeamResponse,
+    that message:GroupChatAgentResponse | GroupChatTeamResponse
+    '''
     @event
     async def handle_agent_response(  # type: ignore
         self, message: GroupChatAgentResponse, ctx: MessageContext

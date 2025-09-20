@@ -596,10 +596,17 @@ class WebSocketManager:
                     BaseTextChatMessage,
                     ToolCallRequestEvent,
                     ToolCallExecutionEvent,
-                    UserInputRequestedEvent,
                 ),
             ):
                 return {"type": "message", "data": message.model_dump(mode="json")}
+            elif isinstance(message, UserInputRequestedEvent):
+                # UserInputRequestedEvent is introduced in upgrading autogen_agentchat from 0.5.4 to 0.7.4
+                # ignore it for not sending to the frontend
+                # otherwise the frontend should be adjusted to handle this type of event to avoid unexpected behaviors
+                logger.warning(
+                    f"format of message type: {type(message)} is ignored, will not send it to the frontend"
+                )
+                return None
             elif isinstance(message, str):
                 return {
                     "type": "message",
