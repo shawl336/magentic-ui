@@ -1,20 +1,22 @@
 # api/deps.py
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from pathlib import Path
+from xxlimited import Str
 from fastapi import HTTPException, status
 
 from ..database import DatabaseManager
 from .config import settings
 from .managers.connection import WebSocketManager
+from ...docker_manager import DockerManager
 
 logger = logging.getLogger(__name__)
 
 # Global manager instances
 _db_manager: Optional[DatabaseManager] = None
 _websocket_manager: Optional[WebSocketManager] = None
-
+_global_tools: List[Any] = []
 # Context manager for database sessions
 
 
@@ -98,6 +100,29 @@ async def init_managers(
         await cleanup_managers()  # Cleanup any partially initialized managers
         raise
 
+async def init_global_tools(
+        coding_files_save_dir: str, # the internal workspace for
+        coding_files_save_dir_in_docker: Str, # the docker workspace for
+    ) -> None:
+    from ..._docker import CODING_IMAGE
+
+    """Initialize the docker manager"""
+    container_name = "gemini_mcp"
+    _global_tools.append(DockerManager(
+        image=CODING_IMAGE,
+        container_name=container_name,
+        working_dir="/data/gemini-cli",
+        volumes={coding_files_save_dir: {"bind": coding_files_save_dir_in_docker, "mode": "rw"}},
+        ports={"18100": "18100"},
+        delete_tmp_files=True,
+        init_command="bash -c 'source /data/gemini-cli/run.sh'",
+        detach=True,
+        tty=True,
+        auto_remove=False,
+        auto_stop_container=True,
+    ))
+    
+    logger.info("Golbal tools initialized")
 
 async def cleanup_managers() -> None:
     """Cleanup and shutdown all manager instances"""

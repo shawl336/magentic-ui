@@ -54,6 +54,7 @@ class TeamManager:
         internal_workspace_root: Path,
         external_workspace_root: Path,
         run_without_docker: bool,
+        run_id: int,
         inside_docker: bool = True,
         config: dict[str, Any] = {},
     ) -> None:
@@ -63,10 +64,11 @@ class TeamManager:
         self.external_workspace_root = external_workspace_root
         self.inside_docker = inside_docker
         self.run_without_docker = run_without_docker
+        self.run_id = run_id
         self.config = config
         # Track uploaded files across the entire conversation
         self.uploaded_files: set[str] = set()
-
+        
     @staticmethod
     async def load_from_file(path: Union[str, Path]) -> Dict[str, Any]:
         """Load team configuration from JSON/YAML file"""

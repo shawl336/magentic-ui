@@ -140,6 +140,7 @@ class WebSocketManager:
                 internal_workspace_root=self.internal_workspace_root,
                 external_workspace_root=self.external_workspace_root,
                 inside_docker=self.inside_docker,
+                run_id=run_id,
                 config=self.config,
                 run_without_docker=self.run_without_docker,
             )

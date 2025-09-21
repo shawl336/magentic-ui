@@ -1,5 +1,6 @@
 # api/app.py
 import os
+from pathlib import Path
 import yaml
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
@@ -12,7 +13,7 @@ from loguru import logger
 
 from ...version import VERSION
 from .config import settings
-from .deps import cleanup_managers, init_managers
+from .deps import cleanup_managers, init_managers, init_global_tools
 from .initialization import AppInitializer
 from .routes import (
     plans,
@@ -65,6 +66,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             os.environ["RUN_WITHOUT_DOCKER"] == "True",
         )
 
+        os.environ["CODING_FILES_SAVE_DIR"] = os.path.join(os.environ["INTERNAL_WORKSPACE_ROOT"], "files", "coding", "generate")
+        os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"] = os.path.join("/data/gemini-cli/", "generate")
+        await init_global_tools(
+            os.environ["CODING_FILES_SAVE_DIR"],
+            os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"],
+        )
+        
         # Any other initialization code
         logger.info(
             f"Application startup complete. Navigate to http://{os.environ.get('_HOST', '127.0.0.1')}:{os.environ.get('_PORT', '8081')}"

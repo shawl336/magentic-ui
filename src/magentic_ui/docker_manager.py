@@ -16,6 +16,8 @@ from autogen_core.code_executor import (
     FunctionWithRequirementsStr,
 )
 try:
+    import asyncio_atexit
+    
     import docker
     from docker.errors import DockerException, ImageNotFound, NotFound
     from docker.models.containers import Container
@@ -49,7 +51,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         *,
         timeout: int = 60,
         auto_remove: bool = True,
-        stop_container: bool = True,
+        auto_stop_container: bool = True,
         device_requests: Optional[List[DeviceRequest]] = None,
         functions: Sequence[
             Union[
@@ -88,7 +90,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
             bind_dir=None,
             timeout=timeout,
             auto_remove=auto_remove,
-            stop_container=stop_container,
+            stop_container=auto_stop_container,
             device_requests=device_requests,
             functions=functions,
             functions_module=functions_module,
@@ -125,10 +127,41 @@ class DockerManager(DockerCommandLineCodeExecutor):
         self.working_dir = working_dir
         self._kwargs = kwargs or {}
     
-    async def start(self) -> bool:
-        """Start the container."""
-        return await self.ensure_running()
-    
+    async def start(self) -> None:
+        """Start the container.
+        Ensure the container is running.
+        
+        This method:
+        1. Checks if a container with the given name exists and is running
+        2. If not running but exists, starts it
+        3. If doesn't exist, creates and starts a new one
+        4. If already running, does nothing
+        
+        Returns:
+            bool: True if container is running, False otherwise
+        """
+        try:
+            status = await self._get_container_status()
+            
+            if status == "running":
+                logger.info(f"Container {self.container_name} is already running")
+                # Get the container reference
+                client = await self._get_docker_client()
+                self._container = await asyncio.to_thread(client.containers.get, self.container_name)
+                self._running = True
+                return
+            elif status is not None:
+                # Container exists but not running
+                logger.info(f"Container {self.container_name} exists but is not running. Starting it...")
+                await self._start_existing_container()
+            else:
+                # Container doesn't exist, create and start it
+                logger.info(f"Container {self.container_name} doesn't exist. Creating and starting it...")
+                await self._create_and_start_container()
+                
+        except Exception as e:
+            logger.error(f"Error starting container {self.container_name}: {e}")
+        
     async def _get_docker_client(self) -> docker.DockerClient:
         """Get or create Docker client."""
         if self._client is None:
@@ -152,17 +185,6 @@ class DockerManager(DockerCommandLineCodeExecutor):
             return True
         except ImageNotFound:
             return False
-    
-    async def _pull_image(self) -> None:
-        """Pull the Docker image if it doesn't exist locally."""
-        logger.info(f"Pulling image {self._image}...")
-        try:
-            client = await self._get_docker_client()
-            await asyncio.to_thread(client.images.pull, self._image)
-            logger.info(f"Successfully pulled image {self._image}")
-        except Exception as e:
-            logger.error(f"Failed to pull image {self._image}: {e}")
-            raise
     
     async def _get_container_status(self) -> Optional[str]:
         """
@@ -217,7 +239,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         try:
             # Ensure image exists
             if not await self._check_image_exists():
-                await self._pull_image()
+                raise RuntimeError(f"Image {self._image} not found")
             
             client = await self._get_docker_client()
             
@@ -266,6 +288,14 @@ class DockerManager(DockerCommandLineCodeExecutor):
             if container.status == "running":
                 self._container = container
                 self._running = True
+                
+                if self._stop_container:
+                    # Register cleanup function stop the container when the process exits
+                    async def cleanup() -> None:
+                        await self.stop()
+                        asyncio_atexit.unregister(cleanup)  # type: ignore
+                        
+                    asyncio_atexit.register(cleanup)  # type: ignore
                 logger.info(f"Successfully created and started container {self.container_name}")
                 return True
             else:
@@ -275,44 +305,9 @@ class DockerManager(DockerCommandLineCodeExecutor):
         except Exception as e:
             logger.error(f"Error creating and starting container {self.container_name}: {e}")
             return False
+           
     
-    async def ensure_running(self) -> bool:
-        """
-        Ensure the container is running.
-        
-        This method:
-        1. Checks if a container with the given name exists and is running
-        2. If not running but exists, starts it
-        3. If doesn't exist, creates and starts a new one
-        4. If already running, does nothing
-        
-        Returns:
-            bool: True if container is running, False otherwise
-        """
-        try:
-            status = await self._get_container_status()
-            
-            if status == "running":
-                logger.info(f"Container {self.container_name} is already running")
-                # Get the container reference
-                client = await self._get_docker_client()
-                self._container = await asyncio.to_thread(client.containers.get, self.container_name)
-                self._running = True
-                return True
-            elif status is not None:
-                # Container exists but not running
-                logger.info(f"Container {self.container_name} exists but is not running. Starting it...")
-                return await self._start_existing_container()
-            else:
-                # Container doesn't exist, create and start it
-                logger.info(f"Container {self.container_name} doesn't exist. Creating and starting it...")
-                return await self._create_and_start_container()
-                
-        except Exception as e:
-            logger.error(f"Error ensuring container {self.container_name} is running: {e}")
-            return False
-    
-    async def stop(self) -> bool:
+    async def stop(self) -> None:
         """
         Stop the container.
         
@@ -321,7 +316,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         """
         if not self._running or self._container is None:
             logger.info(f"Container {self.container_name} is not running")
-            return True
+            return
         
         try:
             await asyncio.to_thread(self._container.stop)
@@ -330,16 +325,13 @@ class DockerManager(DockerCommandLineCodeExecutor):
             if self._container.status in ["exited", "stopped"]:
                 self._running = False
                 logger.info(f"Successfully stopped container {self.container_name}")
-                return True
             else:
                 logger.error(f"Failed to stop container {self.container_name}. Status: {self._container.status}")
-                return False
                 
         except Exception as e:
             logger.error(f"Error stopping container {self.container_name}: {e}")
-            return False
     
-    async def remove(self) -> bool:
+    async def remove(self) -> None:
         """
         Remove the container.
         
@@ -354,16 +346,13 @@ class DockerManager(DockerCommandLineCodeExecutor):
             self._container = None
             self._running = False
             logger.info(f"Successfully removed container {self.container_name}")
-            return True
             
         except NotFound:
-            logger.info(f"Container {self.container_name} not found for removal")
             self._container = None
             self._running = False
-            return True
+            logger.info(f"Container {self.container_name} not found for removal")
         except Exception as e:
             logger.error(f"Error removing container {self.container_name}: {e}")
-            return False
     
     async def get_logs(self, tail: int = 100) -> str:
         """
@@ -395,6 +384,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         """Get the container ID if running."""
         return self._container.id if self._container else None
     
+
     async def close(self) -> None:
         """Clean up resources."""
         if self._client:
@@ -407,3 +397,4 @@ class DockerManager(DockerCommandLineCodeExecutor):
         
         self._container = None
         self._running = False
+    
