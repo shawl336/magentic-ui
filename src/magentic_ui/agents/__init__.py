@@ -3,7 +3,7 @@ from ._coder import CoderAgent
 from ._user_proxy import USER_PROXY_DESCRIPTION
 from .file_surfer import FileSurfer
 from .electrical_docgen import ElectrialcalDocGenAgent
-from ._coding_agent import CodingAgent
+from ._coding_delegator import CodingDelegatorAgent
 
 __all__ = [
     "WebSurfer",
@@ -12,5 +12,5 @@ __all__ = [
     "USER_PROXY_DESCRIPTION",
     "FileSurfer",
     "ElectrialcalDocGenAgent",
-    "CodingAgent"
+    "CodingDelegatorAgent"
 ]

@@ -65,9 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             config,
             os.environ["RUN_WITHOUT_DOCKER"] == "True",
         )
-
-        os.environ["CODING_FILES_SAVE_DIR"] = os.path.join(os.environ["INTERNAL_WORKSPACE_ROOT"], "files", "coding", "generate")
-        os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"] = os.path.join("/data/gemini-cli/", "generate")
+        
+        assert os.environ["CODING_FILES_SAVE_DIR"] and \
+            os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"]
         await init_global_tools(
             os.environ["CODING_FILES_SAVE_DIR"],
             os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"],

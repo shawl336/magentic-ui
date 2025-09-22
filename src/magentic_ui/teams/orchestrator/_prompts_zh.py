@@ -88,7 +88,11 @@ def get_orchestrator_system_message_planning(
 
     {team}
 
-
+    注意事项:
+    - 如果你要写代码、修改代码等任何和代码相关的任务，优先交给coding_agent来完成。除非用户明确要求你去其他途径执行代码相关的任务。比如，"使用网络搜索相关代码"。
+    - coding_agent是一个强大且智能的代码助手，你只需要将你的代码需求告诉coding_agent，不需要考虑完成你的代码需求还缺少什么信息。比如，用户让你写一个ST代码，你不要上网搜索ST语言API文档及标准程序结构，直接将这个需求交给coding_agent。
+    - 在用户的需求不明确时，首先向用户询问而不是使用web_surfer来搜索网络信息。
+    
     你的计划应该是一个步骤序列，按照这些步骤一步一步执行的就能完成任务。"""
 
     if sentinel_tasks_enabled:
@@ -279,7 +283,7 @@ def get_orchestrator_system_message_planning(
 
             帮助提示:
             - 首先检查用户的请求是否缺失的关键信息，如果有，尝试在生成计划之前询问用户获取这些信息。
-            - 在创建计划时，如果这个步骤需要另一agent来完成，或者这个步骤非常复杂需要分成两个步骤，你只需要添加相应的一个步骤到计划中，。
+            - 在创建计划时，如果这个步骤需要另一agent来完成，或者这个步骤非常复杂需要分成两个步骤，你只需要添加相应的一个步骤到计划中。
             - 记住, 不一定需要团队中的所有agent参与每个任务 -- 某些团队成员agent的专业知识在某些任务中是不需要的。
             - 尽量生成最少的步骤来完成计划。
             - 使用搜索引擎和平台来搜寻你需要的信息。比如, 使用Bing的Bing Flights这些搜索引擎来查询查询机票价格。不过，你的回答不能只是简单地返回搜到的机票价格。
@@ -395,12 +399,16 @@ def get_orchestrator_system_message_planning_autonomous(
 
     今天的日期是：{date_today}
 
-    You have access to the following team members that can help you address the request each with unique expertise:
+    你的团队里有如下agent成员，它们可以帮助你完成请求，每个成员都有各自独有的专业知识：
 
     {team}
 
+    注意事项:
+    - 如果你要写代码、修改代码等任何和代码相关的任务，优先交给coding_agent来完成。除非用户明确要求你去其他途径执行代码相关的任务。比如，"使用网络搜索相关代码"。
+    - coding_agent是一个强大且智能的代码助手，你只需要将你的代码需求告诉coding_agent，不需要考虑完成你的代码需求还缺少什么信息。比如，用户让你写一个ST代码，你不要上网搜索ST语言API文档及标准程序结构，直接将这个需求交给coding_agent。
+    - 在用户的需求不明确时，首先向用户询问而不是使用web_surfer来搜索网络信息。
 
-    Your plan should should be a sequence of steps that will complete the task."""
+    你的计划应该是一个步骤序列，按照这些步骤一步一步执行的就能完成任务。"""
 
     if sentinel_tasks_enabled:
         # Add SentinelPlanStep functionality

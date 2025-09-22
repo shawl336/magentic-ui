@@ -3,7 +3,6 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Dict, Optional, List
 from pathlib import Path
-from xxlimited import Str
 from fastapi import HTTPException, status
 
 from ..database import DatabaseManager
@@ -102,7 +101,7 @@ async def init_managers(
 
 async def init_global_tools(
         coding_files_save_dir: str, # the internal workspace for
-        coding_files_save_dir_in_docker: Str, # the docker workspace for
+        coding_files_save_dir_in_docker: str, # the docker workspace for
     ) -> None:
     from ..._docker import CODING_IMAGE
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+import os
 from typing import Any, Dict, List, Optional, Union
 
 from autogen_agentchat.agents import UserProxyAgent
@@ -5,7 +7,7 @@ from autogen_agentchat.base import ChatAgent, Team
 from autogen_core import ComponentModel
 from autogen_core.models import ChatCompletionClient
 
-from .agents import USER_PROXY_DESCRIPTION, CoderAgent, FileSurfer, WebSurfer, CodingAgent
+from .agents import USER_PROXY_DESCRIPTION, CoderAgent, FileSurfer, WebSurfer, CodingDelegatorAgent
 from .agents import ElectrialcalDocGenAgent
 from .agents.mcp import McpAgent
 from .agents.users import DummyUserProxy, MetadataUserProxy
@@ -31,6 +33,7 @@ async def get_task_team(
     input_func: Optional[InputFuncType] = None,
     *,
     paths: RunPaths,
+    run_id: int
 ) -> GroupChat | RoundRobinGroupChat:
     """
     Creates and returns a GroupChat team with specified configuration.
@@ -229,11 +232,15 @@ async def get_task_team(
                                            server_params=SseServerParams(url="http://localhost:18100/sse"))
         return [coding_tool]
 
-    coding_agent = CodingAgent(
+    coding_work_dir = Path(os.environ["CODING_FILES_SAVE_DIR"], str(run_id))
+    coding_bind_dir = Path(os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"], str(run_id))
+    coding_agent = CodingDelegatorAgent(
         name="coding_agent",
         model_client=model_client_coder,
         coding_tools=get_coding_mcp_tools(),
-        app_dir=paths.internal_root_dir, # internal_root_dir is the app_dir, e.g. ~/magentic_ui
+        coding_provider="gemini_cli",
+        work_dir=coding_work_dir,
+        bind_dir=coding_bind_dir,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
     )

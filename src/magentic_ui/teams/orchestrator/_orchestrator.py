@@ -64,11 +64,10 @@ from ._sentinel_prompts import (
     validate_sentinel_condition_check_json,
 )
 from ._utils import is_accepted_str, extract_json_from_string
-from loguru import logger as trace_logger
 import logging
 from autogen_agentchat import TRACE_LOGGER_NAME
 
-logger = logging.getLogger(TRACE_LOGGER_NAME)
+trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 
 
 class OrchestratorState(BaseGroupChatManagerState):

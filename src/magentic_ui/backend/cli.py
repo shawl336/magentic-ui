@@ -220,6 +220,10 @@ def run_ui(
     env_vars["INTERNAL_WORKSPACE_ROOT"] = appdir
     env_vars["RUN_WITHOUT_DOCKER"] = str(run_without_docker)
 
+    coding_docker_workspace = "/data/gemini-cli/"
+    env_vars["CODING_FILES_SAVE_DIR"] = os.path.join(appdir, "files", "coding", "generate")
+    env_vars["CODING_FILES_SAVE_DIR_IN_DOCKER"] = os.path.join(coding_docker_workspace, "generate")
+    
     # Handle configuration file path
     if not config:
         # Look for config.yaml in the current directory if not specified

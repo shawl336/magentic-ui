@@ -312,6 +312,7 @@ class TeamManager:
                     magentic_ui_config=magentic_ui_config,
                     input_func=input_func,
                     paths=paths,
+                    run_id=self.run_id,
                 ),
             )
             if hasattr(self.team, "_participants"):
