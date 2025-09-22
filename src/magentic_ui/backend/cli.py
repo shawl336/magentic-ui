@@ -220,7 +220,10 @@ def run_ui(
     env_vars["INTERNAL_WORKSPACE_ROOT"] = appdir
     env_vars["RUN_WITHOUT_DOCKER"] = str(run_without_docker)
 
-    coding_docker_workspace = "/data/gemini-cli/"
+    coding_workspace = os.path.join("/home/xiao/lx/magentic-ui/mcp_servers/gemini-cli")
+    coding_docker_workspace = "/data/gemini-cli"
+    env_vars["CODING_WORKSPACE"] = coding_workspace
+    env_vars["CODING_WORKSPACE_IN_DOCKER"] = coding_docker_workspace
     env_vars["CODING_FILES_SAVE_DIR"] = os.path.join(appdir, "files", "coding", "generate")
     env_vars["CODING_FILES_SAVE_DIR_IN_DOCKER"] = os.path.join(coding_docker_workspace, "generate")
     

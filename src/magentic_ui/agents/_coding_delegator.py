@@ -18,6 +18,7 @@ from autogen_core.models import (
 )
 from pydantic import BaseModel
 from typing_extensions import Self
+import httpx
 
 from autogen_agentchat.agents import BaseChatAgent, AssistantAgent
 from autogen_core.code_executor import CodeBlock, CodeExecutor
@@ -46,10 +47,9 @@ from ..tools.mcp import AggregateMcpWorkbench, NamedMcpServerParams
 from ..docker_manager import DockerManager
 from autogen_core.tools import ToolSchema
 from ..teams.orchestrator._utils import extract_json_from_string
-import logging
+# import logging
+# from autogen_agentchat import logger_NAME
 
-from autogen_agentchat import TRACE_LOGGER_NAME
-trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 
 '''
 def _extract_markdown_code_blocks(markdown_text: str) -> List[CodeBlock]:
@@ -277,9 +277,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         self._work_dir = work_dir
         self._bind_dir = bind_dir
         self._coding_provider = coding_provider
-        
-        self._coding_tool_available = False
-        
+                
         self.coding_workbench = AggregateMcpWorkbench(named_server_params=coding_tools)
             
     async def lazy_init(self) -> None:
@@ -339,17 +337,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
         """Handle incoming messages and yield responses as a stream. Append the request to agents chat history."""
         await self.lazy_init()
-
-        # Check if container failed to start
-        if not self._coding_tool_available:
-            yield Response(
-                chat_message=TextMessage(
-                    content=f"代码助手无法访问代码工具，无法执行任何代码生成相关的任务。",
-                    source=self.name,
-                    metadata={"internal": "no"},
-                )
-            )
-            return
 
         if self.is_paused:
             yield Response(
@@ -448,7 +435,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 inner_messages=inner_messages,
             )
         except Exception as e:
-            logger.error(f"Error in CodingAgent: {e}")
+            logger.error(f"Error in CodingDelegatorAgent: {e}")
             # add to chat history
             self._chat_history.append(
                 TextMessage(
@@ -532,7 +519,15 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             token_limited_context = context
         
         # check the mcp tools match the coding_provider
-        tools: List[ToolSchema] = await workbench.list_tools()
+        try:
+            tools: List[ToolSchema] = await workbench.list_tools()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error when listing MCP tools: {e}")
+            raise Exception("Error connecting to coding provider") from e
+        except Exception as e:
+            logger.error(f"Unexpected error when listing MCP tools: {e}")
+            raise Exception("Error connecting to coding provider") from e
+            
         coding_tool: ToolSchema | None = None
         # find the expeceted coding_tool
         
@@ -555,7 +550,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     )
                 token_limited_context = await model_context.get_messages()
                 delegated_result = await model_client.create(
-                    token_limited_context,
+                    token_limited_context[-1:],
                     json_output=True
                     if model_client.model_info["json_output"]
                     else False,
@@ -574,7 +569,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                         break
                     else:
                         exception_message = "Validation failed for JSON response, retrying. You must return a valid JSON object parsed from the response."
-                        trace_logger.debug(
+                        logger.debug(
                             f"Validation failed for JSON response: {delegated_json_response}, retrying ({retries}/{max_json_retries})"
                         )
                 except json.JSONDecodeError as e:
@@ -585,15 +580,16 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                         else:
                             exception_message = "Validation failed for JSON response, retrying. You must return a valid JSON object parsed from the response."
                     else:
+                        logger.error(f"Failed to parse JSON response, retrying. {e}, {delegated_result.content}")
                         exception_message = f"Failed to parse JSON response, retrying. You must return a valid JSON object parsed from the response. Error: {e}"
-                    trace_logger.debug(
+                    logger.debug(
                         f"Failed to parse JSON response, retrying ({retries}/{max_json_retries})"
                     )
                 retries += 1
             else:
                 raise ValueError(f"Failed to get a valid JSON response after {max_json_retries} retries")
         except Exception as e:
-            trace_logger.error(f"Error in CodingAgent: {e}")
+            logger.error(f"Error in CodingDelegatorAgent: {e}")
             raise
         
         assert delegated_json_response is not None
@@ -603,11 +599,20 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         delegated_json_response["save_path"] = str(bind_dir)
         # delegated_json_response will not be appended to the chat_history
         delegated_json_response["request"] = "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n" + delegated_json_response["request"]
-        tool_call_result = await workbench.call_tool(
-            coding_tool.name,
-            delegated_json_response,
-            cancellation_token=cancellation_token,
-        )
+        
+        try:
+            tool_call_result = await workbench.call_tool(
+                coding_tool.get("name"),
+                delegated_json_response,
+                cancellation_token=cancellation_token,
+            )
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error when calling MCP tool: {e}")
+            raise Exception("Error calling the coding provider") from e
+            
+        except Exception as e:
+            logger.error(f"Unexpected error when calling MCP tool: {e}")
+            raise Exception("Unexpected Error calling the coding provider") from e
         
         yield TextMessage(
             content = tool_call_result.to_text(),
@@ -618,13 +623,13 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     
     def validate_tool_parameters(self, tool: ToolSchema) -> bool:
         """Validate the tool parameters."""
-        if not hasattr(tool, "parameters"):
-            raise ValueError(f"Coding tool {tool.name} does not accept any parameters")
-        tool_parameters: Dict[str, Any] = tool.parameters.properties
+        if not tool.get("parameters", {}):
+            raise ValueError(f"Coding tool {tool.get('name')} does not accept any parameters")
+        tool_parameters: Dict[str, Any] = tool.get("parameters", {}).get("properties", {})
         required_parameters = ("request", "save_path")
         for parameter in required_parameters:
             if parameter not in tool_parameters:
-                raise ValueError(f"Coding tool {tool.name} does not accept the parameter {parameter}")
+                raise ValueError(f"Coding tool {tool.get('name')} does not accept the parameter {parameter}")
 
         return True
         

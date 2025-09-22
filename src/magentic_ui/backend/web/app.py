@@ -66,12 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             os.environ["RUN_WITHOUT_DOCKER"] == "True",
         )
         
-        assert os.environ["CODING_FILES_SAVE_DIR"] and \
-            os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"]
-        await init_global_tools(
-            os.environ["CODING_FILES_SAVE_DIR"],
-            os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"],
-        )
+        await init_global_tools()
         
         # Any other initialization code
         logger.info(

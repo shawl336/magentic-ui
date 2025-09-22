@@ -10,7 +10,8 @@ from .config import settings
 from .managers.connection import WebSocketManager
 from ...docker_manager import DockerManager
 
-logger = logging.getLogger(__name__)
+from loguru import logger
+# logger = logging.getLogger(__name__)
 
 # Global manager instances
 _db_manager: Optional[DatabaseManager] = None
@@ -99,19 +100,24 @@ async def init_managers(
         await cleanup_managers()  # Cleanup any partially initialized managers
         raise
 
-async def init_global_tools(
-        coding_files_save_dir: str, # the internal workspace for
-        coding_files_save_dir_in_docker: str, # the docker workspace for
-    ) -> None:
+async def init_global_tools() -> None:
     from ..._docker import CODING_IMAGE
-
+    import os
+    assert os.environ["CODING_FILES_SAVE_DIR"] and \
+        os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"] and \
+        os.environ["CODING_WORKSPACE"] and \
+        os.environ["CODING_WORKSPACE_IN_DOCKER"]
+    
     """Initialize the docker manager"""
     container_name = "gemini_mcp"
     _global_tools.append(DockerManager(
         image=CODING_IMAGE,
         container_name=container_name,
         working_dir="/data/gemini-cli",
-        volumes={coding_files_save_dir: {"bind": coding_files_save_dir_in_docker, "mode": "rw"}},
+        volumes={
+            os.environ["CODING_WORKSPACE"]: {"bind": os.environ["CODING_WORKSPACE_IN_DOCKER"], "mode": "rw"},
+            os.environ["CODING_FILES_SAVE_DIR"]: {"bind": os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"], "mode": "rw"},
+            },
         ports={"18100": "18100"},
         delete_tmp_files=True,
         init_command="bash -c 'source /data/gemini-cli/run.sh'",
@@ -121,6 +127,10 @@ async def init_global_tools(
         auto_stop_container=True,
     ))
     
+    for tool in _global_tools:
+        if hasattr(tool, "start"):
+            await tool.start()
+
     logger.info("Golbal tools initialized")
 
 async def cleanup_managers() -> None:

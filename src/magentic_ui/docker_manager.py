@@ -25,8 +25,7 @@ except ImportError as e:
     raise RuntimeError(
         "Missing dependencies for DockerManager. Please ensure the docker package is installed."
     ) from e
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 A = ParamSpec("A")
 
@@ -215,7 +214,17 @@ class DockerManager(DockerCommandLineCodeExecutor):
             client = await self._get_docker_client()
             container = await asyncio.to_thread(client.containers.get, self.container_name)
             await asyncio.to_thread(container.start)
-            await asyncio.to_thread(container.reload)
+            try:
+                await asyncio.to_thread(container.reload)
+            except NotFound:
+                logger.warning(f"Container {self.container_name} was removed after starting, retrying...")
+                # Container was removed, try to get a fresh reference
+                try:
+                    container = await asyncio.to_thread(client.containers.get, self.container_name)
+                    await asyncio.to_thread(container.reload)
+                except NotFound:
+                    logger.error(f"Container {self.container_name} was removed and cannot be found")
+                    return False
             
             if container.status == "running":
                 self._container = container
@@ -223,8 +232,18 @@ class DockerManager(DockerCommandLineCodeExecutor):
                 logger.info(f"Successfully started existing container {self.container_name}")
                 return True
             else:
-                logger.error(f"Failed to start container {self.container_name}. Status: {container.status}")
+                try:
+                    logs = await asyncio.to_thread(container.logs)
+                    logs_str = logs.decode('utf-8') if logs else "No logs available"
+                except NotFound:
+                    logs_str = "Container not found - may have been removed"
+                except Exception as e:
+                    logs_str = f"Error getting logs for container {self.container_name}: {e}"
+                logger.error(f"Failed to start container {self.container_name}. Status: {container.status}, Logs: {logs_str}")
                 return False
+        except NotFound:
+            logger.warning(f"Container {self.container_name} not found when trying to start existing container")
+            return False
         except Exception as e:
             logger.error(f"Error starting existing container {self.container_name}: {e}")
             return False
@@ -284,7 +303,18 @@ class DockerManager(DockerCommandLineCodeExecutor):
             
             # Start container
             await asyncio.to_thread(container.start)
-            await asyncio.to_thread(container.reload)
+            try:
+                await asyncio.to_thread(container.reload)
+            except NotFound:
+                logger.warning(f"Container {self.container_name} was removed after creation, retrying...")
+                # Container was removed, try to get a fresh reference
+                try:
+                    container = await asyncio.to_thread(client.containers.get, self.container_name)
+                    await asyncio.to_thread(container.reload)
+                except NotFound:
+                    logger.error(f"Container {self.container_name} was removed and cannot be found")
+                    return False
+            
             if container.status == "running":
                 self._container = container
                 self._running = True
@@ -299,7 +329,16 @@ class DockerManager(DockerCommandLineCodeExecutor):
                 logger.info(f"Successfully created and started container {self.container_name}")
                 return True
             else:
-                logger.error(f"Failed to start new container {self.container_name}. Status: {container.status}")
+                try:
+                    logs = await asyncio.to_thread(container.logs)
+                    logs_str = logs.decode('utf-8') if logs else "No logs available"
+                except NotFound:
+                    logs_str = "Container not found - may have been removed"
+                except Exception as e:
+                    logs_str = f"Error getting logs for container {self.container_name}: {e}"
+                
+                logger.error(f"Failed to start new container {self.container_name}. Status: {container.status}, \
+                    Config: {container_config}, Logs: {logs_str}")
                 return False
                 
         except Exception as e:
@@ -320,7 +359,13 @@ class DockerManager(DockerCommandLineCodeExecutor):
         
         try:
             await asyncio.to_thread(self._container.stop)
-            await asyncio.to_thread(self._container.reload)
+            try:
+                await asyncio.to_thread(self._container.reload)
+            except NotFound:
+                logger.warning(f"Container {self.container_name} was removed after stopping")
+                self._running = False
+                self._container = None
+                return
             
             if self._container.status in ["exited", "stopped"]:
                 self._running = False
@@ -328,6 +373,10 @@ class DockerManager(DockerCommandLineCodeExecutor):
             else:
                 logger.error(f"Failed to stop container {self.container_name}. Status: {self._container.status}")
                 
+        except NotFound:
+            logger.warning(f"Container {self.container_name} not found when trying to stop")
+            self._running = False
+            self._container = None
         except Exception as e:
             logger.error(f"Error stopping container {self.container_name}: {e}")
     
@@ -370,6 +419,11 @@ class DockerManager(DockerCommandLineCodeExecutor):
         try:
             logs = await asyncio.to_thread(self._container.logs, tail=tail)
             return logs.decode("utf-8")
+        except NotFound:
+            logger.warning(f"Container {self.container_name} not found when getting logs")
+            self._container = None
+            self._running = False
+            return ""
         except Exception as e:
             logger.error(f"Error getting logs for container {self.container_name}: {e}")
             return ""
