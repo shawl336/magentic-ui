@@ -180,38 +180,74 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     coding_workbench: AggregateMcpWorkbench
     
     DEFAULT_DESCRIPTION = """
-    一个可以写代码和执行代码的智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(bug)或回答代码相关的问题等任何和代码有关的任务。
+    coding_agent是一个代码智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
     你可以同时指定代码的路经和代码文件，让此智能体将代码生成在指定路径中，或者在基于给定的代码文件内容进行修改代码、解释代码等操作。
     请将任何代码相关的任务交给此智能体。
     """
 
-    system_prompt_coding_agent_template = """
-    你是一个中间人，负责客观地分析用户的输入并提取相关的信息，然后通过JSON格式化地输出提取到的相关信息。
+    system_prompt_coding_agent_template = f"""
+    你是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
+    你要客观地分析用户的输入并提取相关的信息，然后将提取到的相关信息以JSON的格式输出。
     
     <输入>
-    用户的输入的在正常情况下都是代码相关的任务，并且可能包含代码的生成路径，你需要将代码的需求和用户要求的生成路径提取并且分开。
-    比如："帮我写一个Hello World的程序，并且保存在generate/test.py文件中"
+    用户的输入大致可以分为三种情况
+    1. 用户的输入提出代码相关的需求，并且包含代码的保存路径，你需要将代码的需求和用户要求的生成路径提取并且分开，但是不要篡改用户的需求。
+    2. 用户的输入提出代码相关的需求，但是不含代码的保存路径，这时你只需要一字不差地的转述用户的输入。
+    3. 用户的输入和代码需求无关，只是普通的交流或者回答问题，这时你只需要一字不差地的转述用户的输入。
+    
+    * 第2和第3种情况的处理方法是一样，你只需要一字不差地的转述用户的输入。
+    
+    用户输入的例子：
+    - "帮我写一个Hello World的程序，并且保存在generate/test.py文件中" （代码需求，包含保存路径）
+    - "用python写一个贪吃蛇游戏" （代码需求，但不包含保存路径）
+    - "是的" (普通交流)
+    - "用python" (回答代码问题，但不是提出代码需求)
+    - "保存在/home/user/test.py文件中" (回答路径存储问题，但不是提出代码需求)
+    
     </输入>
 
     <输出>
-    你的输出需要遵循如下JSON格式，且一定不要输出JSON格式以外的任何信息。:
+    你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。:
     
     ```json
     {{
         "request": "用户的需求",
-        "save_path": "用户指定的生成路径，如果用户没有指定，则取空字符串:\"\"",
+        "save_path": "用户指定的生成路径，如果用户没有指定，则取空字符串",
     }}
     ```
     </输出>
     
     
     <例子>
+    例子不会包含全部的情况，仅仅提供参考，你需要举一反三，根据上下文做出合适的判断。
+    
+    例子 1： 用户提出代码需求，你分析提取**代码需求**和**保存路径**，将**代码需求**和**保存路径**信息分开填入对应的JSON字段。
     输入： 帮我写一个Hello World的程序，并且保存在generate/test.py文件中。 
     输出：
         ```json
         {{
-            "response": "帮我写一个Hello World的程序",
+            "request": "帮我写一个Hello World的程序",
             "save_path": "generate/test.py"
+        }}
+        ```
+    
+    例子 2：用户提出了代码需求但是没有提到保存路径，{{request}}字段填入用户的需求，{{save_path}}字段取空字符串。
+    输入： 用python写一个贪吃蛇游戏。 
+    输出：
+        ```json
+        {{
+            "request": "用python写一个贪吃蛇游戏",
+            "save_path": ""
+        }}
+        ```
+        
+    例子 3：用户虽然提到了保存路径，但是这不是代码需求，可能是用户和另一个智能体的交流，你只需要一字不差地将用户的输入填入{{request}}字段，{{save_path}}字段取空字符串。
+    输入： 保存在/home/user/test.py文件中。 
+    输出：
+        ```json
+        {{
+            "request": "保存在/home/user/test.py文件中",
+            "save_path": ""
         }}
         ```
     </例子>
@@ -219,12 +255,14 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
       
     <严格遵守的规则>:
     - 严格尊重用户的输入需求，不要篡改用户的需求，或者加入你的主观意见。
-    - 严格遵循**输出**规定的JSON格式，不要输出JSON格式以外的任何信息。
-    - {{save_path}}字段只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，{{save_path}}字段必须取空字符串:\"\"。
+    - 严格遵循<输出>规定的JSON格式，不要输出JSON格式以外的任何信息。
+    - **保存路径**只能填入{{save_path}}字段，且只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，{{save_path}}字段必须取空字符串:\"\"。
+    - **代码需求**只能填入{{request}}，且不要包含提取的**保存路径**信息。
     </严格遵守的规则>
 
     """
     
+    # todo: need complement
     system_prompt_coding_agent_template_tool_based = """
     你是一个中间人，负责客观地分析用户的输入并提取相关的信息，并将用户的需求转换为工具调用。
     
@@ -568,9 +606,9 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     if self.validate_output_json(delegated_json_response):
                         break
                     else:
-                        exception_message = "Validation failed for JSON response, retrying. You must return a valid JSON object parsed from the response."
+                        exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
                         logger.debug(
-                            f"Validation failed for JSON response: {delegated_json_response}, retrying ({retries}/{max_json_retries})"
+                            f"JSON响应的验证失败: {delegated_json_response}, 正在重试 ({retries}/{max_json_retries})"
                         )
                 except json.JSONDecodeError as e:
                     delegated_json_response = extract_json_from_string(delegated_result.content)
@@ -578,16 +616,16 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                         if self.validate_output_json(delegated_json_response):
                             break
                         else:
-                            exception_message = "Validation failed for JSON response, retrying. You must return a valid JSON object parsed from the response."
+                            exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
                     else:
                         logger.error(f"Failed to parse JSON response, retrying. {e}, {delegated_result.content}")
-                        exception_message = f"Failed to parse JSON response, retrying. You must return a valid JSON object parsed from the response. Error: {e}"
+                        exception_message = f"JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。错误: {e}"
                     logger.debug(
                         f"Failed to parse JSON response, retrying ({retries}/{max_json_retries})"
                     )
                 retries += 1
             else:
-                raise ValueError(f"Failed to get a valid JSON response after {max_json_retries} retries")
+                raise ValueError(f"JSON响应的验证失败，{max_json_retries}尝试后仍然没有得到有效的JSON响应")
         except Exception as e:
             logger.error(f"Error in CodingDelegatorAgent: {e}")
             raise
