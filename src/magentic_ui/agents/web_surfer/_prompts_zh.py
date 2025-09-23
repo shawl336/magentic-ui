@@ -77,7 +77,7 @@ WEB_SURFER_TOOL_PROMPT = """
 {webpage_text}
 
 附件是当前页面的截图：
-{consider_screenshot}是网址'{url}'的页面截图。 这个截图里, 红色方框标记的是可交互元素。每个方框都有一个红色数字ID。关于每个可视标签的补充信息都列出如下表所示:
+{consider_screenshot}来自于'{url}'。 这个截图里, 红色方框标记的是可交互元素。每个方框都有一个红色数字ID。关于每个可视标签的补充信息都列出如下表所示:
 
 {visible_targets}{other_targets_str}{focused_hint}
 
@@ -98,8 +98,8 @@ WEB_SURFER_NO_TOOLS_PROMPT = """
 - role: 此元素的角色
 - tools: 可以此元素交互的所有工具
 
-附件是当前页面的截图
-{consider_screenshot}是网址'{url}'的页面截图。
+附件是当前页面的截图：
+{consider_screenshot}来自于'{url}'。
 当前网页包含如下文字：
 {webpage_text}
 

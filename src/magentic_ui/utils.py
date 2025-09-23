@@ -123,6 +123,7 @@ def thread_to_context(
     messages: List[BaseAgentEvent | BaseChatMessage],
     agent_name: str,
     is_multimodal: bool = False,
+    zh: bool = True,
 ) -> List[LLMMessage]:
     """Convert the message thread to a context for the model."""
     context: List[LLMMessage] = []
@@ -141,7 +142,7 @@ def thread_to_context(
                 human_input = HumanInputFormat.from_str(m.content)
                 content = f"{human_input.content}"
                 if human_input.plan is not None:
-                    content += f"\n\nI created the following plan: {human_input.plan}"
+                    content += f"\n\nI created the following plan: {human_input.plan}" if not zh else f"\n\n我创建了以下计划: {human_input.plan}"
                 context.append(UserMessage(content=content, source=m.source))
             else:
                 # If content is a list, transform only the string part
@@ -154,7 +155,7 @@ def thread_to_context(
                             content_list[i], str
                         ):
                             content_list[i] = (
-                                f"{content_list[i]}\n\nI created the following plan: {human_input.plan}"
+                                f"{content_list[i]}\n\nI created the following plan: {human_input.plan}" if not zh else f"\n\n我创建了以下计划: {human_input.plan}"
                             )
                 context.append(UserMessage(content=content_list, source=m.source))  # type: ignore
         else:

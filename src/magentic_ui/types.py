@@ -92,12 +92,13 @@ class Plan(BaseModel):
             plan_str += f"{i}. {step.agent_name}: {step.title}\n   {step.details}\n"
             if isinstance(step, SentinelPlanStep):
                 condition_str = str(step.condition)
-                plan_str += f"   [Sentinel: every {step.sleep_duration}s, condition: {condition_str}]\n"
+                plan_str += f"   [哨兵: 每{step.sleep_duration}s, 条件: {condition_str}]\n"
         return plan_str
 
     @classmethod
     def from_list_of_dicts_or_str(
-        cls, plan_dict: Union[List[Dict[str, str]], str, List[Any], Dict[str, Any]]
+        cls, plan_dict: Union[List[Dict[str, str]], str, List[Any], Dict[str, Any]],
+        zh: bool = True,
     ) -> Optional["Plan"]:
         """Load Plan from a list of dictionaries or a JSON string."""
         if isinstance(plan_dict, str):
@@ -121,18 +122,18 @@ class Plan(BaseModel):
                 if "condition" in step and "sleep_duration" in step:
                     steps.append(
                         SentinelPlanStep(
-                            title=step.get("title", "Untitled Step"),
-                            details=step.get("details", "No details provided."),
+                            title=step.get("title", "Untitled Step" if not zh else "未命名的步骤"),
+                            details=step.get("details", "No details provided." if not zh else "没有提供详情。"),
                             agent_name=step.get("agent_name", "agent"),
                             sleep_duration=step.get("sleep_duration", 0),
-                            condition=step.get("condition", "indefinite"),
+                            condition=step.get("condition", "indefinite" if not zh else "无期限"),
                         )
                     )
                 else:
                     steps.append(
                         PlanStep(
-                            title=step.get("title", "Untitled Step"),
-                            details=step.get("details", "No details provided."),
+                            title=step.get("title", "Untitled Step" if not zh else "未命名的步骤"),
+                            details=step.get("details", "No details provided." if not zh else "没有提供详情。"),
                             agent_name=step.get("agent_name", "agent"),
                         )
                     )

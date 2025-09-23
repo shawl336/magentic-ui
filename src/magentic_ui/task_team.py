@@ -130,6 +130,7 @@ async def get_task_team(
         start_page=None,
         use_action_guard=True,
         to_save_screenshots=False,
+        search_engine="baidu.com",
     )
 
     user_proxy: DummyUserProxy | MetadataUserProxy | UserProxyAgent

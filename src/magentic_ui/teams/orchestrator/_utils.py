@@ -19,6 +19,31 @@ def is_accepted_str(user_input: str) -> bool:
         "sounds good",
         "i don't know. use your best judgment.",
         "i don't know, you figure it out, don't ask me again.",
+        "接受",
+        "已接受",
+        "接受计划",
+        "接受执行计划",
+        "接受执行",
+        "接受执行计划",
+        "接受执行",
+        "接收",
+        "已接收",
+        "接收计划",
+        "接收执行计划",
+        "接收执行",
+        "接收执行计划",
+        "接收执行",
+        "同意",
+        "同意计划",
+        "同意执行计划",
+        "同意执行",
+        "同意执行计划",
+        "同意执行",
+        "执行计划",
+        "执行",
+        "去做吧",
+        "继续"
+        "听上去不错"
     ]
     user_input = user_input.lower()
     user_input = user_input.strip()

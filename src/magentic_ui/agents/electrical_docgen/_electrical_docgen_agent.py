@@ -43,11 +43,13 @@ from autogen_agentchat.messages import (
 from docxtpl import DocxTemplate
 from pathlib import Path
 import json
-import logging
+# import logging
 
+# trace_loger = logging.getLogger(TRACE_LOGGER_NAME)
+# event_logger = logging.getLogger(EVENT_LOGGER_NAME)
+from loguru import logger
+trace_loger = logger
 
-trace_loger = logging.getLogger(TRACE_LOGGER_NAME)
-event_logger = logging.getLogger(EVENT_LOGGER_NAME)
 
 class GenDocxUseTemplate(object):
     """use template to generate doxc"""
@@ -444,9 +446,12 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
             )
         )
         # yeild response to manager
+        from docx import Document
+        docx_obj = Document(os.path.join(str(self.work_dir), output_filename))
+        docx_text = "\n".join([paragraph.text for paragraph in docx_obj.paragraphs])
         yield Response(
             chat_message=TextMessage(
-                content=f"electrical docgen task is complete!",
+                content=f"文档已经生成，内容为:{docx_text}",
                 source=self.name,
                 models_usage=model_result.usage,
             ),
@@ -470,7 +475,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         
         # Use regex to extract JSON from markdown code blocks
         # Pattern matches ```json followed by content and optional trailing ```
-        json_pattern = r'```json\s*(.*?)(?:\s*```|$)?'
+        json_pattern = r'```json(.*?)\s*```'
         match = re.search(json_pattern, content, re.DOTALL)
         
         if match:

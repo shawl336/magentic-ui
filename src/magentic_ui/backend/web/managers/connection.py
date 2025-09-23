@@ -565,7 +565,7 @@ class WebSocketManager:
 
         try:
             if isinstance(message, MultiModalMessage):
-                message_dump = message.model_dump()
+                message_dump = message.model_dump(mode="json")
 
                 message_content: list[dict[str, Any]] = []
                 for row in message_dump["content"]:
@@ -589,7 +589,7 @@ class WebSocketManager:
                     "status": "complete",
                 }
             elif isinstance(message, ModelClientStreamingChunkEvent):
-                return {"type": "message_chunk", "data": message.model_dump()}
+                return {"type": "message_chunk", "data": message.model_dump(mode="json")}
 
             elif isinstance(
                 message,
