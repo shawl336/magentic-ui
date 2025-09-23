@@ -6,7 +6,6 @@ ensuring that containers are running when needed and managing their state.
 """
 
 import asyncio
-import logging
 from typing import Optional, Dict, Union, List, Sequence, Any, Callable, ParamSpec
 from autogen_ext.code_executors.docker import DockerCommandLineCodeExecutor
 from pathlib import Path

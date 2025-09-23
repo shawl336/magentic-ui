@@ -220,8 +220,12 @@ def run_ui(
     env_vars["INTERNAL_WORKSPACE_ROOT"] = appdir
     env_vars["RUN_WITHOUT_DOCKER"] = str(run_without_docker)
 
-    coding_workspace = os.path.join("/home/xiao/lx/magentic-ui/mcp_servers/gemini-cli")
+    # magentic_ui_dir_parent is the PARENT of the code base, NOT equals appdir
+    # ${parent}/magentic-ui
+    magentic_ui_dir_parent = os.path.abspath(os.path.join(os.path.abspath(__file__), "../../../..", ".."))
+    coding_workspace = os.path.join(magentic_ui_dir_parent, "mcp_servers", "gemini-cli")
     coding_docker_workspace = "/data/gemini-cli"
+    print('\n\'n\'n', magentic_ui_dir_parent)
     env_vars["CODING_WORKSPACE"] = coding_workspace
     env_vars["CODING_WORKSPACE_IN_DOCKER"] = coding_docker_workspace
     env_vars["CODING_FILES_SAVE_DIR"] = os.path.join(appdir, "files", "coding", "generate")
