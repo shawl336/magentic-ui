@@ -385,7 +385,9 @@ class Orchestrator(BaseGroupChatManager):
             GroupChatMessage(message=message),
             topic_id=DefaultTopicId(type=self._output_topic_type),
         )
-        await self._output_message_queue.put(message)
+        # lx-todo need evalutaion
+        # to avoid double putting messages to the _output_message_queue -lx
+        # await self._output_message_queue.put(message)
 
     async def _publish_group_chat_message(
         self,
@@ -823,7 +825,7 @@ class Orchestrator(BaseGroupChatManager):
             # add plan_response to the message thread
             self._state.message_history.append(
                 TextMessage(
-                    content=json.dumps(plan_response, indent=4), source=self._name
+                    content=json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
                 )
             )
         else:
@@ -891,7 +893,7 @@ class Orchestrator(BaseGroupChatManager):
                 # add plan_response to the message thread
                 self._state.message_history.append(
                     TextMessage(
-                        content=json.dumps(plan_response, indent=4), source=self._name
+                        content=json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
                     )
                 )
 
@@ -1050,7 +1052,7 @@ class Orchestrator(BaseGroupChatManager):
             "plan_length": len(self._state.plan),
         }
         await self._log_message_agentchat(
-            json.dumps(json_step_execution),
+            json.dumps(json_step_execution, ensure_ascii=False, indent=4),
             metadata={"internal": "no", "type": "step_execution"},
         )
 

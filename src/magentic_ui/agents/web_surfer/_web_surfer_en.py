@@ -668,7 +668,7 @@ class WebSurfer(BaseChatAgent, Component[WebSurferConfig]):
                     for action in response:
                         assert isinstance(action, FunctionCall)
                         tool_call_name = action.name
-                        tool_call_msg = f"{action.name}( {json.dumps(json.loads(action.arguments))} )"
+                        tool_call_msg = f"{action.name}( {json.dumps(json.loads(action.arguments), ensure_ascii=False, indent=4)} )"
                         tool_call_explanation = json.loads(action.arguments).get(
                             "explanation"
                         )
@@ -763,7 +763,7 @@ class WebSurfer(BaseChatAgent, Component[WebSurferConfig]):
                             assert self.action_guard is not None
                             # tool_call_msg with (if exist) explanation
                             action_proposal = (
-                                f"{tool_call_name}( {json.dumps(json.loads(action.arguments))} )"
+                                f"{tool_call_name}( {json.dumps(json.loads(action.arguments), ensure_ascii=False, indent=4)} )"
                                 if tool_call_explanation is None
                                 else f"{tool_call_explanation}"
                             )
@@ -1290,7 +1290,7 @@ class WebSurfer(BaseChatAgent, Component[WebSurferConfig]):
                 tool_args = json_response["tool_args"]
                 tool_args["explanation"] = json_response["explanation"]
                 function_call = FunctionCall(
-                    id="json_response", name=tool_name, arguments=json.dumps(tool_args)
+                    id="json_response", name=tool_name, arguments=json.dumps(tool_args, ensure_ascii=False, indent=4)
                 )
                 return [function_call], rects, tools, element_id_mapping, True
             except Exception as e:
@@ -1742,11 +1742,11 @@ class WebSurfer(BaseChatAgent, Component[WebSurferConfig]):
                 url=self._page.url,
                 action=name,
                 arguments=args,
-                message=f"{name}( {json.dumps(args)} )",
+                message=f"{name}( {json.dumps(args, ensure_ascii=False, indent=4)} )",
             )
         )
         self.inner_messages.append(
-            TextMessage(content=f"{name}( {json.dumps(args)} )", source=self.name)
+            TextMessage(content=f"{name}( {json.dumps(args, ensure_ascii=False, indent=4)} )", source=self.name)
         )
 
         # Convert tool name to function name (e.g. "visit_url" -> "_execute_tool_visit_url")

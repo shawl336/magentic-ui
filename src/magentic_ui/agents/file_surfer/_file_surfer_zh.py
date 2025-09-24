@@ -371,7 +371,7 @@ class FileSurfer(BaseChatAgent, Component[FileSurferConfig]):
                         )
                         return
 
-                    tool_call_msg = f"{function_call.name}( {json.dumps(json.loads(function_call.arguments))} )"
+                    tool_call_msg = f"{function_call.name}( {json.dumps(json.loads(function_call.arguments), ensure_ascii=False, indent=4)} )"
 
                     self._chat_history.append(
                         AssistantMessage(

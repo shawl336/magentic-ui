@@ -823,7 +823,7 @@ class Orchestrator(BaseGroupChatManager):
             # add plan_response to the message thread
             self._state.message_history.append(
                 TextMessage(
-                    content=json.dumps(plan_response, indent=4), source=self._name
+                    content=json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
                 )
             )
         else:
@@ -891,7 +891,7 @@ class Orchestrator(BaseGroupChatManager):
                 # add plan_response to the message thread
                 self._state.message_history.append(
                     TextMessage(
-                        content=json.dumps(plan_response, indent=4), source=self._name
+                        content=json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
                     )
                 )
 
@@ -1050,7 +1050,7 @@ class Orchestrator(BaseGroupChatManager):
             "plan_length": len(self._state.plan),
         }
         await self._log_message_agentchat(
-            json.dumps(json_step_execution),
+            json.dumps(json_step_execution, ensure_ascii=False, indent=4),
             metadata={"internal": "no", "type": "step_execution"},
         )
 

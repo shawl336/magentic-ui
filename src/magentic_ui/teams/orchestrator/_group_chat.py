@@ -131,7 +131,7 @@ class GroupChat(BaseGroupChat, Component[GroupChatConfig]):
             yield message
             partial_state = await self._get_partial_state()
             yield CheckpointEvent(
-                source="orchestrator", state=json.dumps(partial_state)
+                source="orchestrator", state=json.dumps(partial_state, ensure_ascii=False, indent=4)
             )  # type: ignore
 
     async def pause(self) -> None:  # TODO: can this be implemented using events?

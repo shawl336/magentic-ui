@@ -112,7 +112,7 @@ def dict_to_str(data: Union[JsonDict, str]) -> str:
         str: The input dictionary in JSON format.
     """
     if isinstance(data, dict):
-        return json.dumps(data)
+        return json.dumps(data, ensure_ascii=False, indent=4)
     elif isinstance(data, str):
         return data
     else:

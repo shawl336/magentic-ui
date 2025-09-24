@@ -446,7 +446,7 @@ class TeamManager:
                                 metadata={
                                     "internal": "no",
                                     "type": "file",
-                                    "files": json.dumps(new_files),
+                                    "files": json.dumps(new_files, ensure_ascii=False, indent=4),
                                 },
                             )
                             global_new_files.extend(new_files)
@@ -480,7 +480,7 @@ class TeamManager:
                                 metadata={
                                     "internal": "no",
                                     "type": "file",
-                                    "files": json.dumps(global_new_files),
+                                    "files": json.dumps(global_new_files, ensure_ascii=False, indent=4),
                                 },
                             )
                             yield file_message

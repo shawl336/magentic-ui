@@ -86,7 +86,7 @@ def construct_task(
 
     # Add the user query at the end
     combined_text = "\n\n".join(text_parts)
-    attached_files_json = json.dumps(attached_files)
+    attached_files_json = json.dumps(attached_files, ensure_ascii=False, indent=4)
     # Return a MultiModalMessage if there are images, otherwise a TextMessage
     if len(text_parts) > 0:
         messages_return.append(

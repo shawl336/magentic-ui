@@ -186,7 +186,7 @@ class HumanInputFormat(BaseModel):
 
     def to_str(self) -> str:
         """Return the string representation of the input."""
-        return json.dumps(self.model_dump())
+        return json.dumps(self.model_dump(), ensure_ascii=False, indent=4)
 
 
 class CheckpointEvent(BaseAgentEvent):

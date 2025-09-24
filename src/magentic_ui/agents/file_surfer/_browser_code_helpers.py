@@ -124,7 +124,7 @@ def _find_files_impl() -> Callable[[str], None]:
 
         result = {"matches": matches, "perfect_match": perfect_match}
 
-        print(json.dumps(result))
+        print(json.dumps(result, ensure_ascii=False, indent=4))
 
     return find_files
 

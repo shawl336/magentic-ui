@@ -1463,7 +1463,7 @@ class PlaywrightController:
             if percent_scrolled + percent_visible >= 99
             else f"{percent_scrolled}% down from the top of the page"
         )
-        page_metadata = json.dumps(await self.get_page_metadata(page), indent=4)
+        page_metadata = json.dumps(await self.get_page_metadata(page), ensure_ascii=False, indent=4)
         metadata_hash = hashlib.md5(page_metadata.encode("utf-8")).hexdigest()
 
         page_metadata = f"\nThe following metadata was extracted from the webpage:\n\n{page_metadata.strip()}\n"

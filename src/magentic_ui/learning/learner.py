@@ -129,7 +129,7 @@ async def adapt_plan(client: ChatCompletionClient, plan: Plan, task: str) -> Pla
         source="user",
     )
     plan_message = UserMessage(
-        content=[json.dumps(plan.model_dump())],
+        content=[json.dumps(plan.model_dump(), ensure_ascii=False, indent=4)],
         source="user",
     )
     task_message = UserMessage(

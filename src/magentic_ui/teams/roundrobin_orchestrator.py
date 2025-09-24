@@ -403,7 +403,7 @@ class RoundRobinGroupChat(BaseGroupChat, Component[RoundRobinGroupChatConfig]):
             yield message
             partial_state = await self._get_partial_state()
             yield CheckpointEvent(
-                source="orchestrator", state=json.dumps(partial_state)
+                source="orchestrator", state=json.dumps(partial_state, ensure_ascii=False, indent=4)
             )  # type: ignore
 
     async def _get_partial_state(self) -> Mapping[str, Any]:
