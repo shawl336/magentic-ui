@@ -84,7 +84,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         super().__init__(
             image=image,
             container_name=container_name,
-            work_dir=Path("~/.magentic-ui").expanduser(), # not used
+            work_dir=Path("~/.magentic_ui").expanduser(), # not used
             bind_dir=None,
             timeout=timeout,
             auto_remove=auto_remove,

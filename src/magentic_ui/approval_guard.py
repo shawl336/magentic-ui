@@ -241,7 +241,7 @@ class ApprovalGuard(BaseApprovalGuard):
                         content_list.append(item)
                     else:
                         try:
-                            content_list.append(json.dumps(item))
+                            content_list.append(json.dumps(item, ensure_ascii=False, indent=4))
                         except TypeError:
                             content_list.append(str(item))
                 action_content = "\n".join(content_list)

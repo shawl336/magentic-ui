@@ -635,7 +635,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         delegated_json_response["save_path"] = str(bind_dir)
         # delegated_json_response will not be appended to the chat_history
 
-        delegated_json_response["request"] = "historical messages:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n current input:" + delegated_json_response["request"]
+        delegated_json_response["request"] = "historical messages:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n current input:\n" + delegated_json_response["request"]
         with open("delegated_json_response.json", "w", encoding="utf-8") as f:
             json.dump(delegated_json_response, f, ensure_ascii=False, indent=4)
         try:
@@ -652,8 +652,9 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             logger.error(f"Unexpected error when calling MCP tool: {e}")
             raise Exception("调用代码MCP工具失败，遇到未知错误，无法修复") from e
         
+        tool_call_result_text = tool_call_result.to_text()
         yield TextMessage(
-            content = tool_call_result.to_text(),
+            content = tool_call_result_text if tool_call_result_text else "调用代码工具没有返回结果，出现错误，代码工具使用",
             source=agent_name,
             metadata={"finished": "yes"},
         )   

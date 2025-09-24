@@ -35,6 +35,7 @@ from autogen_agentchat.teams._group_chat._events import (
     GroupChatRequestPublish,
     GroupChatStart,
     GroupChatTermination,
+    GroupChatTeamResponse,
 )
 from autogen_agentchat.teams._group_chat._base_group_chat_manager import (
     BaseGroupChatManager,
@@ -387,7 +388,7 @@ class Orchestrator(BaseGroupChatManager):
         )
         # lx-todo need evalutaion
         # to avoid double putting messages to the _output_message_queue -lx
-        # await self._output_message_queue.put(message)
+        await self._output_message_queue.put(message)
 
     async def _publish_group_chat_message(
         self,
@@ -540,20 +541,19 @@ class Orchestrator(BaseGroupChatManager):
         """Resume the group chat manager."""
         self._state.is_paused = False
 
-    '''
-    lx-todo: handle the GroupChatTeamResponse,
-    that message:GroupChatAgentResponse | GroupChatTeamResponse
-    '''
     @event
-    async def handle_agent_response(  # type: ignore
-        self, message: GroupChatAgentResponse, ctx: MessageContext
-    ) -> None:
-        delta: List[BaseChatMessage] = []
-        if message.response.inner_messages is not None:
-            for inner_message in message.response.inner_messages:
-                delta.append(inner_message)  # type: ignore
-        self._state.message_history.append(message.response.chat_message)
-        delta.append(message.response.chat_message)
+    async def handle_agent_response( # type: ignore
+        self, message: GroupChatAgentResponse | GroupChatTeamResponse, ctx: MessageContext
+    ) -> None:  
+        delta: List[BaseAgentEvent | BaseChatMessage] = []
+        if isinstance(message, GroupChatAgentResponse):
+            if message.response.inner_messages is not None:
+                delta.extend(message.response.inner_messages)
+            self._state.message_history.append(message.response.chat_message)
+            delta.append(message.response.chat_message)
+        else:
+            self._state.message_history.extend(message.result.messages)
+            delta.extend(message.result.messages)
 
         if self._termination_condition is not None:
             stop_message = await self._termination_condition(delta)
@@ -931,6 +931,17 @@ class Orchestrator(BaseGroupChatManager):
     async def _orchestrate_step_execution(
         self, cancellation_token: CancellationToken, first_step: bool = False
     ) -> None:
+        """Orchestrate the next step of the conversation.
+
+        Args:
+            cancellation_token (CancellationToken): _description_
+            first_step (bool, optional): Will be True in 2 cases
+                1. The execution step is right after the plan is accepted
+                2. The plan is created and user's approval is no needed (config._cooperative_planning is False)
+
+        Raises:
+            ValueError: _description_
+        """
         # Execution stage
         if first_step:
             # remove all messages from the message thread that are not from the user
@@ -955,7 +966,7 @@ class Orchestrator(BaseGroupChatManager):
             self._config.max_turns is not None
             and self._state.n_rounds > self._config.max_turns
         ):
-            await self._prepare_final_answer("Max rounds reached.", cancellation_token)
+            await self._prepare_final_answer("达到最大执行轮数。", cancellation_token)
             return
 
         self._state.n_rounds += 1
