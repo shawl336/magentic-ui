@@ -185,9 +185,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     请将任何代码相关的任务交给此智能体。
     """
 
-    system_prompt_coding_agent_template = f"""
+    system_prompt_coding_agent_template = """
     你是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
     你要客观地分析用户的输入并提取相关的信息，然后将提取到的相关信息以JSON的格式输出。
+    
+    今天的日期是:{date_today}
     
     <输入>
     用户的输入大致可以分为三种情况
@@ -534,37 +536,37 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             ApprovalDeniedError: If the user denies the approval for the coding request.
         """
         # The list of new messages to be added to the thread.
-
         # Add system prompt as the last message before generation
         current_thread = (
             list(thread)
         )
-
-        # create an LLM context from system message, global chat history, and inner messages
-        context = [SystemMessage(content=system_prompt)] + thread_to_context(
+        context = thread_to_context(
             current_thread,
             agent_name,
             is_multimodal=model_client.model_info["vision"],
         )
+            
+        # the delegator only take as input the last message to analyze
+        delegator_context = [SystemMessage(content=system_prompt), context[-1]] 
 
         # Re-initialize model context to meet token limit quota
         try:
             await model_context.clear()
-            for msg in context:
+            for msg in delegator_context:
                 await model_context.add_message(msg)
             token_limited_context = await model_context.get_messages()
         except Exception:
-            token_limited_context = context
+            token_limited_context = delegator_context
         
         # check the mcp tools match the coding_provider
         try:
             tools: List[ToolSchema] = await workbench.list_tools()
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error when listing MCP tools: {e}")
-            raise Exception("Error connecting to coding provider") from e
+            raise Exception("获取代码MCP工具失败，http错误") from e
         except Exception as e:
             logger.error(f"Unexpected error when listing MCP tools: {e}")
-            raise Exception("Error connecting to coding provider") from e
+            raise Exception("获取代码MCP工具失败，遇到未知错误，无法修复") from e
             
         coding_tool: ToolSchema | None = None
         # find the expeceted coding_tool
@@ -574,7 +576,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 coding_tool = tool
                 break 
         else:
-            raise ValueError(f"Coding tool {coding_provider} not found")
+            raise ValueError(f"未找到代码工具{coding_provider}，无法提供代码能力")
         
         # preprocess the user request and extract coding tool parameters
         retries = 0
@@ -588,7 +590,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     )
                 token_limited_context = await model_context.get_messages()
                 delegated_result = await model_client.create(
-                    token_limited_context[-1:],
+                    token_limited_context,
                     json_output=True
                     if model_client.model_info["json_output"]
                     else False,
@@ -596,11 +598,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 )
                 assert isinstance(delegated_result.content, str)
                 try:
-                    yield TextMessage(
-                            source=agent_name + "-llm",
-                            metadata={"type": "potential_code"},
-                            content=delegated_result.content,
-                        )
+                    logger.debug(f"Coding Delegator Agent: {delegated_result.content}")
                     delegated_json_response = json.loads(delegated_result.content)
                     # Use the validate_json function to check the response
                     if self.validate_output_json(delegated_json_response):
@@ -636,6 +634,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         # currently, not allowing customized generating path
         delegated_json_response["save_path"] = str(bind_dir)
         # delegated_json_response will not be appended to the chat_history
+
         delegated_json_response["request"] = "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n" + delegated_json_response["request"]
         
         try:
@@ -646,11 +645,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             )
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error when calling MCP tool: {e}")
-            raise Exception("Error calling the coding provider") from e
+            raise Exception("调用代码MCP工具失败，http错误") from e
             
         except Exception as e:
             logger.error(f"Unexpected error when calling MCP tool: {e}")
-            raise Exception("Unexpected Error calling the coding provider") from e
+            raise Exception("调用代码MCP工具失败，遇到未知错误，无法修复") from e
         
         yield TextMessage(
             content = tool_call_result.to_text(),
