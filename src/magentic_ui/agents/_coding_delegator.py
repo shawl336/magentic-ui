@@ -36,6 +36,8 @@ from autogen_agentchat.messages import (
     BaseTextChatMessage,
 )
 
+from magentic_ui.tools.playwright.browser.utils import get_available_port
+
 from ..utils import thread_to_context, _thread_to_context_only_given_name
 
 from ..approval_guard import BaseApprovalGuard
@@ -143,6 +145,7 @@ async def _summarize_coding(
 
 class CodingDelegatorAgentConfig(BaseModel):
     name: str
+    run_id: int
     model_client: ComponentModel
     description: str = """
     一个可以写代码和执行代码的智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(bug)或回答代码相关的问题等任何和代码有关的任务。
@@ -276,12 +279,12 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     def __init__(
         self,
         name: str,
+        run_id: int,
         model_client: ChatCompletionClient,
         coding_tools: List[NamedMcpServerParams],
         coding_provider: str,
         work_dir: Path,
         bind_dir: Path,
-        run_id: int,
         code_manager: Optional[DockerManager] = None,
         model_context_token_limit: int = 128000,
         description: str = DEFAULT_DESCRIPTION,
@@ -295,8 +298,8 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name (str): The name of the agent
             model_client (ChatCompletionClient): The language model client to use.
             coding_tools: the NamedMcpServerParams specifying the coding provider MCP server.
-            work_dir (Path | str): Working directory for code execution. Default: None.
-            bind_dir (Path | str): Working directory in Docker container. Default: None.
+            work_dir (Path | str): Working directory to save generated code files in the local filesystem. Default: None.
+            bind_dir (Path | str): Working directory to save generated code files in Docker container. Default: None.
             code_manager (CodeExecutor): It does not execute code curerently, 
                 but utilize the code_manager to run the coding provider MCP server. Default: None.
             coding_provider (str): The name of the coding tool provided by the code_manger MCP. Default: "gemini_cli".
@@ -305,6 +308,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             summarize_output (bool, optional): Whether to summarize code execution results. Default: False.
         """
         super().__init__(name, description)
+        self._run_id = run_id
         self._model_client = model_client
         self._model_context = TokenLimitedChatCompletionContext(
             model_client, token_limit=model_context_token_limit
@@ -329,7 +333,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 os.environ["CODING_WORKSPACE_IN_DOCKER"]
         
             """Initialize the docker manager"""
-            container_name = "gemini_mcp-" + str(run_id) + "-" + str(uuid.uuid4())
+            # get a available port for the gemini_mcp server
+            port, socket = get_available_port()
+            socket.close()
+            
+            container_name = "gemini_mcp-" + str(run_id) + "-" + str(port) + "-" + str(uuid.uuid4())
             self._code_manager = DockerManager(
                 image=CODING_IMAGE,
                 container_name=container_name,
@@ -339,7 +347,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     os.environ["CODING_WORKSPACE"]: {"bind": os.environ["CODING_WORKSPACE_IN_DOCKER"], "mode": "rw"},
                     str(self._work_dir): {"bind": str(self._bind_dir), "mode": "rw"},
                     },
-                ports={"18100": "18100"},
+                ports={"18100/tcp": str(port)}, # docker port is 18100/tcp, local port is the latter
                 delete_tmp_files=True,
                 init_command="bash -c 'source /data/gemini-cli/run.sh'",
                 detach=True,
@@ -723,6 +731,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """Convert the agent's state to a configuration object."""
         return CodingDelegatorAgentConfig(
             name=self.name,
+            run_id=self._run_id,
             model_client=self._model_client.dump_component(),
             coding_tools=self.coding_workbench.server_params,
             work_dir=self._work_dir,
@@ -739,6 +748,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """Create an agent instance from a configuration object."""
         return cls(
             name=config.name,
+            run_id=config.run_id,
             model_client=ChatCompletionClient.load_component(config.model_client),
             coding_tools=config.coding_tools,  # Convert single tool to list
             work_dir=config.work_dir,
