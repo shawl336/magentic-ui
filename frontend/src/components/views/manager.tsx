@@ -64,7 +64,12 @@ export const SessionManager: React.FC = () => {
     try {
       setIsLoading(true);
       const data = await sessionAPI.listSessions(user.email);
-      setSessions(data);
+      // Ensure all sessions have valid names
+      const cleanedData = data.map(session => ({
+        ...session,
+        name: session.name || `Session ${session.id}`
+      }));
+      setSessions(cleanedData);
 
       // Only set first session if there's no sessionId in URL
       const params = new URLSearchParams(window.location.search);
@@ -182,10 +187,23 @@ export const SessionManager: React.FC = () => {
         });
       }
 
+      // Clean up session run status
+      setSessionRunStatuses((prev) => {
+        const updated = { ...prev };
+        delete updated[sessionId];
+        return updated;
+      });
+
       const response = await sessionAPI.deleteSession(sessionId, user.email);
-      setSessions(sessions.filter((s) => s.id !== sessionId));
-      if (session?.id === sessionId || sessions.length === 0) {
-        setSession(sessions[0] || null);
+      const remainingSessions = sessions.filter((s) => s.id !== sessionId);
+      setSessions(remainingSessions);
+
+      // Always switch to the latest session (first in the sorted list)
+      const latestSession = remainingSessions.length > 0 ? remainingSessions[0] : null;
+      setSession(latestSession);
+      if (latestSession?.id) {
+        window.history.pushState({}, "", `?sessionId=${latestSession.id}`);
+      } else {
         window.history.pushState({}, "", window.location.pathname); // Clear URL params
       }
       messageApi.success("Session deleted");
@@ -234,12 +252,15 @@ export const SessionManager: React.FC = () => {
   const handleSessionName = async (sessionData: Partial<Session>) => {
     if (!sessionData.id || !user?.email) return;
 
-    // Check if current session name matches default pattern
+    // Check if current session name matches default pattern or if name is provided in sessionData
     const currentSession = sessions.find((s) => s.id === sessionData.id);
     if (!currentSession) return;
 
-    // Only update if it starts with "Default Session - "
-    if (currentSession.name.startsWith("Default Session - ")) {
+    // Update if it starts with "Default Session - " OR if name is explicitly provided
+    const shouldUpdate = currentSession.name.startsWith("Default Session - ") ||
+                        (sessionData.name && sessionData.name !== currentSession.name);
+
+    if (shouldUpdate) {
       try {
         const updated = await sessionAPI.updateSession(
           sessionData.id,
