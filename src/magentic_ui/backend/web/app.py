@@ -13,7 +13,7 @@ from loguru import logger
 
 from ...version import VERSION
 from .config import settings
-from .deps import cleanup_managers, init_managers, init_global_tools
+from .deps import cleanup_managers, init_managers
 from .initialization import AppInitializer
 from .routes import (
     plans,
@@ -65,9 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             config,
             os.environ["RUN_WITHOUT_DOCKER"] == "True",
         )
-        
-        await init_global_tools()
-        
+                
         # Any other initialization code
         logger.info(
             f"Application startup complete. Navigate to http://{os.environ.get('_HOST', '127.0.0.1')}:{os.environ.get('_PORT', '8081')}"

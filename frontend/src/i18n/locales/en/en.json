@@ -162,6 +162,7 @@
   "or try a sample task from below": "or try a sample task from below",
   "Loading document...": "Loading document...",
   "Failed to display document": "Failed to display document",
+  "Final Answer:": "Final Answer:",
 
   "Segment Plan": "---------------------------------",
   "Please sign in to view your plans": "Please sign in to view your plans",
@@ -200,7 +201,7 @@
   "Add Step": "Add Step",
   "Plan:": "Plan:",
   "Enter Step details": "Enter step details",
-
+  
   "Segment View": "---------------------------------",
   "Magentic-UI  component": "Magentic-UI  component",
   "Cancel": "Cancel",

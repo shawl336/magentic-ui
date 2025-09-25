@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from runpy import run_path
 from typing import Any, Dict, List, Optional, Union
 
 from autogen_agentchat.agents import UserProxyAgent
@@ -233,8 +234,11 @@ async def get_task_team(
                                            server_params=SseServerParams(url="http://localhost:18100/sse"))
         return [coding_tool]
 
-    coding_work_dir = Path(os.environ["CODING_FILES_SAVE_DIR"], str(run_id))
-    coding_bind_dir = Path(os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"], str(run_id))
+    # {appdir}/files/user/{user_id}/{session_id}/{run_id}/coding
+    coding_work_dir = paths.internal_run_dir / "coding"
+    # /data/gemini-cli/generate/{run_id}/coding
+    coding_bind_dir = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) / "generate" / str(run_id) /"coding"
+    
     coding_agent = CodingDelegatorAgent(
         name="coding_agent",
         model_client=model_client_coder,
@@ -242,6 +246,7 @@ async def get_task_team(
         coding_provider="gemini_cli",
         work_dir=coding_work_dir,
         bind_dir=coding_bind_dir,
+        run_id=run_id,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
     )

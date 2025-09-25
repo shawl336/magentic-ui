@@ -1,11 +1,9 @@
 import asyncio
-from ctypes import Union
 from pathlib import Path
 import shutil
-from typing import AsyncGenerator, List, Literal, Sequence, Optional, Dict
-import re, json
+from typing import AsyncGenerator, List, Sequence, Optional, Dict
+import json, os
 from typing import Any, Mapping
-import uuid
 from autogen_core.tools import Workbench
 from loguru import logger
 from datetime import datetime
@@ -19,9 +17,9 @@ from autogen_core.models import (
 from pydantic import BaseModel
 from typing_extensions import Self
 import httpx
+import uuid
 
-from autogen_agentchat.agents import BaseChatAgent, AssistantAgent
-from autogen_core.code_executor import CodeBlock, CodeExecutor
+from autogen_agentchat.agents import BaseChatAgent
 from autogen_core.model_context import (
     ChatCompletionContext,
     TokenLimitedChatCompletionContext,
@@ -37,9 +35,8 @@ from autogen_agentchat.messages import (
     ToolCallRequestEvent,
     BaseTextChatMessage,
 )
-from autogen_ext.code_executors.local import LocalCommandLineCodeExecutor
 
-from ..utils import thread_to_context
+from ..utils import thread_to_context, _thread_to_context_only_given_name
 
 from ..approval_guard import BaseApprovalGuard
 from ..guarded_action import ApprovalDeniedError, TrivialGuardedAction
@@ -51,7 +48,7 @@ from ..teams.orchestrator._utils import extract_json_from_string
 # from autogen_agentchat import logger_NAME
 
 
-'''
+r'''
 def _extract_markdown_code_blocks(markdown_text: str) -> List[CodeBlock]:
     pattern = re.compile(r"```(?:\s*([\w\+\-]+))?\n([\s\S]*?)```")
     matches = pattern.findall(markdown_text)
@@ -180,13 +177,13 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     coding_workbench: AggregateMcpWorkbench
     
     DEFAULT_DESCRIPTION = """
-    coding_agent是一个代码智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
+    这是一个代码智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
     你可以同时指定代码的路经和代码文件，让此智能体将代码生成在指定路径中，或者在基于给定的代码文件内容进行修改代码、解释代码等操作。
     请将任何代码相关的任务交给此智能体。
     """
 
     system_prompt_coding_agent_template = """
-    你是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
+    你是{name}, 一个代码智能体，但是你不会直接写代码，也不要写代码，你只是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
     你要客观地分析用户的输入并提取相关的信息，然后将提取到的相关信息以JSON的格式输出。
     
     今天的日期是:{date_today}
@@ -261,6 +258,9 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     - **保存路径**只能填入{{save_path}}字段，且只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，{{save_path}}字段必须取空字符串:\"\"。
     - **代码需求**只能填入{{request}}，且不要包含提取的**保存路径**信息。
     </严格遵守的规则>
+    
+    重点注意:
+    - 你不会写代码，也不要写代码，你只负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体。
 
     """
     
@@ -278,9 +278,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         name: str,
         model_client: ChatCompletionClient,
         coding_tools: List[NamedMcpServerParams],
+        coding_provider: str,
         work_dir: Path,
         bind_dir: Path,
-        coding_provider: str,
+        run_id: int,
+        code_manager: Optional[DockerManager] = None,
         model_context_token_limit: int = 128000,
         description: str = DEFAULT_DESCRIPTION,
         max_reties: int = 2,
@@ -293,13 +295,14 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name (str): The name of the agent
             model_client (ChatCompletionClient): The language model client to use.
             coding_tools: the NamedMcpServerParams specifying the coding provider MCP server.
+            work_dir (Path | str): Working directory for code execution. Default: None.
+            bind_dir (Path | str): Working directory in Docker container. Default: None.
+            code_manager (CodeExecutor): It does not execute code curerently, 
+                but utilize the code_manager to run the coding provider MCP server. Default: None.
+            coding_provider (str): The name of the coding tool provided by the code_manger MCP. Default: "gemini_cli".
             description (str, optional): Description of the agent's capabilities. Default: DEFAULT_DESCRIPTION.
             max_reties (int, optional): Maximum number of tring generate json response. Default: 2.
             summarize_output (bool, optional): Whether to summarize code execution results. Default: False.
-            code_executor (Optional[CodeExecutor], optional): It does not execute code curerenly, 
-                but utilize the code_executor to run the coding provider MCP server. Default: None.
-            work_dir (Path | str | None, optional): Working directory for code execution. Default: None.
-            bind_dir (Path | str | None, optional): Working directory in Docker container. Default: None.
         """
         super().__init__(name, description)
         self._model_client = model_client
@@ -317,8 +320,33 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         self._work_dir = work_dir
         self._bind_dir = bind_dir
         self._coding_provider = coding_provider
-                
+        self._code_manager = code_manager
         self.coding_workbench = AggregateMcpWorkbench(named_server_params=coding_tools)
+        
+        if not self._code_manager:
+            from .._docker import CODING_IMAGE
+            assert os.environ["CODING_WORKSPACE"] and \
+                os.environ["CODING_WORKSPACE_IN_DOCKER"]
+        
+            """Initialize the docker manager"""
+            container_name = "gemini_mcp-" + str(run_id) + "-" + str(uuid.uuid4())
+            self._code_manager = DockerManager(
+                image=CODING_IMAGE,
+                container_name=container_name,
+                success_log_pattern="Application startup complete.*Uvicorn running on",
+                working_dir=os.environ["CODING_WORKSPACE_IN_DOCKER"],
+                volumes={
+                    os.environ["CODING_WORKSPACE"]: {"bind": os.environ["CODING_WORKSPACE_IN_DOCKER"], "mode": "rw"},
+                    str(self._work_dir): {"bind": str(self._bind_dir), "mode": "rw"},
+                    },
+                ports={"18100": "18100"},
+                delete_tmp_files=True,
+                init_command="bash -c 'source /data/gemini-cli/run.sh'",
+                detach=True,
+                tty=True,
+                auto_remove=True,
+                stop_container=True,
+            )
             
     async def lazy_init(self) -> None:
         """Initialize the code executor if it has a start method.
@@ -328,7 +356,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """
         if self._did_lazy_init:
             return
-            
+        
+        # lx-todo, makr the start status of the code manager (docker container)
+        if self._code_manager:
+            await self._code_manager.start()
+                
         self._did_lazy_init = True
 
     async def close(self) -> None:
@@ -340,6 +372,8 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         - Closes the model client
         """
         logger.info("Closing CodingDelegatorAgent...")
+        # self._code_manager will not be None
+        await self._code_manager.stop() # type: ignore
         # Remove the work directory if it was created.
         if self._cleanup_work_dir and self._work_dir.exists():
             await asyncio.to_thread(shutil.rmtree, self._work_dir)
@@ -388,7 +422,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             )
             return
         self._chat_history.extend(messages)
-        last_message_received: BaseChatMessage = messages[-1]
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
 
         # Set up the cancellation token for the code execution.
@@ -405,6 +438,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         monitor_pause_task = asyncio.create_task(monitor_pause())
 
         system_prompt_coding_agent = self.system_prompt_coding_agent_template.format(
+            name=self.name,
             date_today=datetime.now().strftime("%Y-%m-%d")
         )
 
@@ -545,9 +579,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             agent_name,
             is_multimodal=model_client.model_info["vision"],
         )
-            
         # the delegator only take as input the last message to analyze
-        delegator_context = [SystemMessage(content=system_prompt), context[-1]] 
+        # the historical messages are ignored
+        last_message = context[-1]
+        delegator_context = [SystemMessage(content=system_prompt), last_message]
 
         # Re-initialize model context to meet token limit quota
         try:
@@ -636,8 +671,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         # delegated_json_response will not be appended to the chat_history
 
         delegated_json_response["request"] = "historical messages:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n current input:\n" + delegated_json_response["request"]
-        with open("delegated_json_response.json", "w", encoding="utf-8") as f:
-            json.dump(delegated_json_response, f, ensure_ascii=False, indent=4)
         try:
             tool_call_result = await workbench.call_tool(
                 coding_tool.get("name"),
@@ -700,7 +733,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             summarize_output=self._summarize_output,
             # TODO: Optionally add code_executor configuration if supported
         )
-
+        
     @classmethod
     def _from_config(cls, config: CodingDelegatorAgentConfig) -> Self:
         """Create an agent instance from a configuration object."""

@@ -225,12 +225,9 @@ def run_ui(
     magentic_ui_dir_parent = os.path.abspath(os.path.join(os.path.abspath(__file__), "../../../..", ".."))
     coding_workspace = os.path.join(magentic_ui_dir_parent, "mcp_servers", "gemini-cli")
     coding_docker_workspace = "/data/gemini-cli"
-    print('\n\'n\'n', magentic_ui_dir_parent)
     env_vars["CODING_WORKSPACE"] = coding_workspace
     env_vars["CODING_WORKSPACE_IN_DOCKER"] = coding_docker_workspace
-    env_vars["CODING_FILES_SAVE_DIR"] = os.path.join(appdir, "files", "coding", "generate")
-    env_vars["CODING_FILES_SAVE_DIR_IN_DOCKER"] = os.path.join(coding_docker_workspace, "generate")
-    
+
     # Handle configuration file path
     if not config:
         # Look for config.yaml in the current directory if not specified
