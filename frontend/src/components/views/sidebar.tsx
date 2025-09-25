@@ -12,6 +12,7 @@ import {
   MoreVertical,
   StopCircle,
   Server,
+  BookOpen,
 } from "lucide-react";
 import type { Session, RunStatus } from "../types/datamodel";
 import SubMenu from "../common/SubMenu";
@@ -129,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="truncate text-sm max-w-[140px]">
-                  {s.name}
+                  {s.name || `Session ${s.id}`}
                 </span>
                 {s.id && (
                   <SessionRunStatusIndicator
@@ -224,9 +225,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 label: t("Saved Plans"),
                 icon: <Archive className="w-4 h-4" />,
               },
+              {
+                id: "knowledge_base",
+                label: t("知识库管理"),
+                icon: <BookOpen className="w-4 h-4" />,
+              },
             ]}
             activeItem={activeSubMenuItem}
-            onClick={onSubMenuChange}
+            onClick={(itemId) => {
+              if (itemId === "knowledge_base") {
+                // 获取用户名并跳转到知识库管理页面
+                const username = localStorage.getItem("username") || "anonymous";
+                const url = 'http://localhost/platform/knowledge-bases';
+                // window.open(`${url}?username=${encodeURIComponent(username)}`, "_blank"); //这里需要把用户名传进去来实现用户登录
+                window.open(url, "_blank");
+              } else {
+                onSubMenuChange(itemId);
+              }
+            }}
           />
         </div>
 

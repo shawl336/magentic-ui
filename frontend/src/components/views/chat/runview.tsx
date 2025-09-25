@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Globe2 } from "lucide-react";
+import { Globe2, ChevronUp, ChevronDown } from "lucide-react";
 import { Run, Message } from "../../types/datamodel";
 import { RenderMessage, messageUtils } from "./rendermessage";
 import { getStatusIcon } from "../statusicon";
@@ -9,6 +9,7 @@ import ApprovalButtons from "./approval_buttons";
 import ChatInput from "./chatinput";
 import { IStatus } from "../../types/app";
 import { RcFile } from "antd/es/upload";
+import { Tooltip } from "antd";
 
 const DETAIL_VIEWER_CONTAINER_ID = "detail-viewer-container";
 
@@ -90,6 +91,13 @@ const RunView: React.FC<RunViewProps> = ({
   const [failedStepIndices, setFailedStepIndices] = useState<Set<number>>(
     new Set()
   );
+
+  // Scroll navigation states
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const [scrollUpClicked, setScrollUpClicked] = useState(false);
+  const [scrollDownClicked, setScrollDownClicked] = useState(false);
 
   // Add ref for the latest user message
   const latestUserMessageRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +192,59 @@ const RunView: React.FC<RunViewProps> = ({
     messageUtils.isPlanMessage(
       run.messages[run.messages.length - 1]?.config.metadata
     );
+
+  // Scroll navigation functions
+  const updateScrollState = React.useCallback(() => {
+    if (!threadContainerRef?.current) return;
+
+    const container = threadContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+
+    // Check if content is scrollable
+    const scrollable = scrollHeight > clientHeight;
+    setIsScrollable(scrollable);
+
+    if (!scrollable) {
+      setCanScrollUp(false);
+      setCanScrollDown(false);
+      return;
+    }
+
+    // Update button states based on scroll position
+    setCanScrollUp(scrollTop > 10); // Allow small threshold
+    setCanScrollDown(scrollTop < scrollHeight - clientHeight - 10); // Allow small threshold
+  }, []);
+
+  const scrollToTop = React.useCallback(() => {
+    if (threadContainerRef?.current && canScrollUp) {
+      threadContainerRef.current.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+    }
+  }, [canScrollUp]);
+
+  const scrollToBottom = React.useCallback(() => {
+    if (threadContainerRef?.current && canScrollDown) {
+      const container = threadContainerRef.current;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth"
+      });
+    }
+  }, [canScrollDown]);
+
+  const handleScrollToTop = React.useCallback(() => {
+    scrollToTop();
+    setScrollUpClicked(true);
+  }, [scrollToTop]);
+
+  const handleScrollToBottom = React.useCallback(() => {
+    scrollToBottom();
+    setScrollDownClicked(true);
+  }, [scrollToBottom]);
 
   // Add state for tracking images from multimodal messages
   const [messageImages, setMessageImages] = useState<{
@@ -604,6 +665,96 @@ const RunView: React.FC<RunViewProps> = ({
     }
   }, [run.status]);
 
+  // Scroll navigation effects
+  useEffect(() => {
+    const container = threadContainerRef.current;
+    if (!container) return;
+
+    // Initial state update
+    updateScrollState();
+
+    // Add scroll event listener
+    const handleScroll = () => {
+      updateScrollState();
+      // Reset button states when scroll position changes
+      if (scrollUpClicked && !canScrollUp) {
+        setScrollUpClicked(false);
+      }
+      if (scrollDownClicked && !canScrollDown) {
+        setScrollDownClicked(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+
+    // Cleanup
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [updateScrollState, canScrollUp, canScrollDown, scrollUpClicked, scrollDownClicked]);
+
+  // Reset button states when scroll position changes
+  useEffect(() => {
+    if (scrollUpClicked && !canScrollUp) {
+      setScrollUpClicked(false);
+    }
+    if (scrollDownClicked && !canScrollDown) {
+      setScrollDownClicked(false);
+    }
+  }, [canScrollUp, canScrollDown, scrollUpClicked, scrollDownClicked]);
+
+  // Floating Navigation Buttons Component
+  const FloatingNavigationButtons = () => {
+    // Common button styles and logic
+    const ScrollButton = ({
+      icon,
+      title,
+      onClick,
+      canScroll,
+      isClicked
+    }: {
+      icon: React.ReactNode;
+      title: string;
+      onClick: () => void;
+      canScroll: boolean;
+      isClicked: boolean;
+    }) => (
+      <Tooltip title={title} placement="left">
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={!canScroll || isClicked}
+          className={`flex justify-center items-center w-12 h-12 rounded-full shadow-lg transition-all duration-300 ${
+            canScroll && !isClicked
+              ? "bg-magenta-800 hover:bg-magenta-900 text-white hover:shadow-xl transform hover:scale-105"
+              : "bg-gray-300 text-gray-500 cursor-not-allowed opacity-50"
+          }`}
+        >
+          {icon}
+        </button>
+      </Tooltip>
+    );
+
+    return (
+      <div className="absolute right-6 z-50 flex flex-col gap-3" style={{ bottom: '6rem' }}>
+        <ScrollButton
+          icon={<ChevronUp className="h-5 w-5" />}
+          title="回到顶部"
+          onClick={handleScrollToTop}
+          canScroll={canScrollUp}
+          isClicked={scrollUpClicked}
+        />
+        <ScrollButton
+          icon={<ChevronDown className="h-5 w-5" />}
+          title="回到底部"
+          onClick={handleScrollToBottom}
+          canScroll={canScrollDown}
+          isClicked={scrollDownClicked}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
       className="flex w-full gap-4 h-full overflow-hidden"
@@ -623,7 +774,7 @@ const RunView: React.FC<RunViewProps> = ({
         {/* Thread Section - scrollable messages */}
         <div
           ref={threadContainerRef}
-          className="w-full flex-1 overflow-y-auto pr-2"
+          className="w-full flex-1 overflow-y-auto scroll pr-2"
           style={{ scrollbarGutter: "stable" }}
         >
           {localMessages.length > 0 &&
@@ -701,6 +852,9 @@ const RunView: React.FC<RunViewProps> = ({
             />
           </div>
         </div>
+
+        {/* Floating Navigation Buttons */}
+        {isScrollable && <FloatingNavigationButtons />}
 
         {/* ChatInput - separate non-scrolling footer */}
         <div
