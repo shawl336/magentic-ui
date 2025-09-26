@@ -226,13 +226,6 @@ async def get_task_team(
 
     # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
     model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
-    def get_coding_mcp_tools():
-        from .tools.mcp import NamedMcpServerParams
-        from autogen_ext.tools.mcp import SseServerParams
-        
-        coding_tool = NamedMcpServerParams(server_name="gemini_cli", 
-                                           server_params=SseServerParams(url="http://localhost:18100/sse"))
-        return [coding_tool]
 
     # {appdir}/files/user/{user_id}/{session_id}/{run_id}/coding
     coding_work_dir = paths.internal_run_dir / "coding"
@@ -242,7 +235,6 @@ async def get_task_team(
     coding_agent = CodingDelegatorAgent(
         name="coding_agent",
         model_client=model_client_coder,
-        coding_tools=get_coding_mcp_tools(),
         coding_provider="gemini_cli",
         work_dir=coding_work_dir,
         bind_dir=coding_bind_dir,

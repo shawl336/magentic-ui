@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 import shutil
+from token import OP
 from typing import AsyncGenerator, List, Sequence, Optional, Dict
 import json, os
 from typing import Any, Mapping
@@ -281,7 +282,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         name: str,
         run_id: int,
         model_client: ChatCompletionClient,
-        coding_tools: List[NamedMcpServerParams],
         coding_provider: str,
         work_dir: Path,
         bind_dir: Path,
@@ -325,10 +325,22 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         self._bind_dir = bind_dir
         self._coding_provider = coding_provider
         self._code_manager = code_manager
-        self.coding_workbench = AggregateMcpWorkbench(named_server_params=coding_tools)
+        self.coding_workbench: Optional[AggregateMcpWorkbench] = None
+            
+    async def lazy_init(self) -> None:
+        """Initialize the code executor if it has a start method.
+
+        This method is called after initialization to set up any async resources
+        needed by the code executor.
+        """
+        if self._did_lazy_init:
+            return
         
         if not self._code_manager:
             from .._docker import CODING_IMAGE
+            from ..tools.mcp import NamedMcpServerParams
+            from autogen_ext.tools.mcp import SseServerParams
+            
             assert os.environ["CODING_WORKSPACE"] and \
                 os.environ["CODING_WORKSPACE_IN_DOCKER"]
         
@@ -337,7 +349,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             port, socket = get_available_port()
             socket.close()
             
-            container_name = "gemini_mcp-" + str(run_id) + "-" + str(port) + "-" + str(uuid.uuid4())
+            coding_tool = NamedMcpServerParams(server_name="gemini_cli", 
+                                                server_params=SseServerParams(url=f"http://localhost:{str(port)}/sse"))
+            assert self.coding_workbench is None
+            self.coding_workbench = AggregateMcpWorkbench(named_server_params=[coding_tool])
+            container_name = "gemini_mcp-" + str(self._run_id) + "-" + str(port) + "-" + str(uuid.uuid4())
             self._code_manager = DockerManager(
                 image=CODING_IMAGE,
                 container_name=container_name,
@@ -355,15 +371,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 auto_remove=True,
                 stop_container=True,
             )
-            
-    async def lazy_init(self) -> None:
-        """Initialize the code executor if it has a start method.
-
-        This method is called after initialization to set up any async resources
-        needed by the code executor.
-        """
-        if self._did_lazy_init:
-            return
         
         # lx-todo, makr the start status of the code manager (docker container)
         if self._code_manager:
