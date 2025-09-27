@@ -155,7 +155,6 @@ class CodingDelegatorAgentConfig(BaseModel):
     """
     max_reties: int = 3
     summarize_output: bool = False
-    coding_tools: List[NamedMcpServerParams]
     coding_provider: str
     work_dir: Path
     bind_dir: Path
@@ -178,7 +177,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     component_type = "agent"
     component_config_schema = CodingDelegatorAgentConfig
     component_provider_override = "magentic_ui.agents.CodingAgent"
-    coding_workbench: AggregateMcpWorkbench
     
     DEFAULT_DESCRIPTION = """
     这是一个代码智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
@@ -325,7 +323,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         self._bind_dir = bind_dir
         self._coding_provider = coding_provider
         self._code_manager = code_manager
-        self.coding_workbench: Optional[AggregateMcpWorkbench] = None
+        self._coding_workbench = None
             
     async def lazy_init(self) -> None:
         """Initialize the code executor if it has a start method.
@@ -351,8 +349,8 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             
             coding_tool = NamedMcpServerParams(server_name="gemini_cli", 
                                                 server_params=SseServerParams(url=f"http://localhost:{str(port)}/sse"))
-            assert self.coding_workbench is None
-            self.coding_workbench = AggregateMcpWorkbench(named_server_params=[coding_tool])
+            assert self._coding_workbench is None
+            self._coding_workbench = AggregateMcpWorkbench(named_server_params=[coding_tool])
             container_name = "gemini_mcp-" + str(self._run_id) + "-" + str(port) + "-" + str(uuid.uuid4())
             self._code_manager = DockerManager(
                 image=CODING_IMAGE,
@@ -467,7 +465,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 coding_provider=self._coding_provider,
                 bind_dir=self._bind_dir,
                 model_client=self._model_client,
-                workbench=self.coding_workbench,
+                workbench=self._coding_workbench, # type: ignore
                 max_json_retries=self._max_reties,
                 cancellation_token=code_execution_token,
                 model_context=self._model_context,
@@ -534,7 +532,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             )
             yield Response(
                 chat_message=TextMessage(
-                    content=f"coding智能体发生如下错误： {e}",
+                    content=f"coding智能体生成代码时发生如下错误： {e}",
                     source=self.name,
                     metadata={"internal": "no"},
                 ),
@@ -740,7 +738,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name=self.name,
             run_id=self._run_id,
             model_client=self._model_client.dump_component(),
-            coding_tools=self.coding_workbench.server_params,
             work_dir=self._work_dir,
             bind_dir=self._bind_dir,
             coding_provider=self._coding_provider,
@@ -757,7 +754,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name=config.name,
             run_id=config.run_id,
             model_client=ChatCompletionClient.load_component(config.model_client),
-            coding_tools=config.coding_tools,  # Convert single tool to list
             work_dir=config.work_dir,
             bind_dir=config.bind_dir,
             coding_provider=config.coding_provider,
