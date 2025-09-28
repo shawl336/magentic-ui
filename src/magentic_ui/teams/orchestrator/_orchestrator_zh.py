@@ -382,6 +382,7 @@ class Orchestrator(BaseGroupChatManager):
             metadata=metadata or {"internal": internal_str},
         )
 
+        # orchestrator will not receive this message from itself from self._output_topic_type
         await self.publish_message(
             GroupChatMessage(message=message),
             topic_id=DefaultTopicId(type=self._output_topic_type),
@@ -823,6 +824,7 @@ class Orchestrator(BaseGroupChatManager):
                 )
                 return
             assert plan_response is not None
+            #lx-todo, handle the exception while from_list_of_dicts_or_str return None， otherwsie assertion "self._state.plan is not None" fails
             self._state.plan = Plan.from_list_of_dicts_or_str(plan_response["steps"])
             self._state.plan_str = str(self._state.plan)
             # add plan_response to the message thread
@@ -887,6 +889,7 @@ class Orchestrator(BaseGroupChatManager):
                     )
                     return
                 assert plan_response is not None
+                #lx-todo, handle the exception while from_list_of_dicts_or_str return None， otherwsie assertion "self._state.plan is not None" fails
                 self._state.plan = Plan.from_list_of_dicts_or_str(
                     plan_response["steps"]
                 )
@@ -1128,6 +1131,8 @@ class Orchestrator(BaseGroupChatManager):
                 source=self._name,
             )
         )
+        
+        #lx-todo, handle the exception while getting json response from the LLM
         plan_response = await self._get_json_response(
             context, self._validate_plan_json, cancellation_token
         )

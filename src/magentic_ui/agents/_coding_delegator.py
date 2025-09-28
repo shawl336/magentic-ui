@@ -657,6 +657,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                             f"JSON响应的验证失败: {delegated_json_response}, 正在重试 ({retries}/{max_json_retries})"
                         )
                 except json.JSONDecodeError as e:
+                    #lx-todo, sometimes the delegated_result.content is a plausible but the json.loads failed and report 'Expecting value: line 1 column 1 (char 0)'
                     delegated_json_response = extract_json_from_string(delegated_result.content)
                     if delegated_json_response is not None:
                         if self.validate_output_json(delegated_json_response):
@@ -683,7 +684,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         delegated_json_response["save_path"] = str(bind_dir)
         # delegated_json_response will not be appended to the chat_history
 
-        delegated_json_response["request"] = "historical messages:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n current input:\n" + delegated_json_response["request"]
+        delegated_json_response["request"] = "上下文和历史对话消息:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n 当前输入:\n" + delegated_json_response["request"]
         try:
             tool_call_result = await workbench.call_tool(
                 coding_tool.get("name"),
