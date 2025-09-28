@@ -719,20 +719,18 @@ const RunView: React.FC<RunViewProps> = ({
       canScroll: boolean;
       isClicked: boolean;
     }) => (
-      <Tooltip title={title} placement="left">
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={!canScroll || isClicked}
-          className={`flex justify-center items-center w-12 h-12 rounded-full shadow-lg transition-all duration-300 ${
-            canScroll && !isClicked
-              ? "bg-magenta-800 hover:bg-magenta-900 text-white hover:shadow-xl transform hover:scale-105"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed opacity-50"
-          }`}
-        >
-          {icon}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!canScroll || isClicked}
+        className={`flex justify-center items-center w-12 h-12 rounded-full shadow-lg transition-all duration-300 ${
+          canScroll && !isClicked
+            ? "bg-magenta-800 hover:bg-magenta-900 text-white hover:shadow-xl transform hover:scale-105"
+            : "bg-gray-300 text-gray-500 cursor-not-allowed opacity-50"
+        }`}
+      >
+        {icon}
+      </button>
     );
 
     return (
