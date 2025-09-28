@@ -8,7 +8,6 @@ from fastapi import HTTPException, status
 from ..database import DatabaseManager
 from .config import settings
 from .managers.connection import WebSocketManager
-from ...docker_manager import DockerManager
 
 from loguru import logger
 # logger = logging.getLogger(__name__)
@@ -99,39 +98,6 @@ async def init_managers(
         logger.error(f"Failed to initialize managers: {str(e)}")
         await cleanup_managers()  # Cleanup any partially initialized managers
         raise
-
-async def init_global_tools() -> None:
-    from ..._docker import CODING_IMAGE
-    import os
-    assert os.environ["CODING_FILES_SAVE_DIR"] and \
-        os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"] and \
-        os.environ["CODING_WORKSPACE"] and \
-        os.environ["CODING_WORKSPACE_IN_DOCKER"]
-    
-    """Initialize the docker manager"""
-    container_name = "gemini_mcp"
-    _global_tools.append(DockerManager(
-        image=CODING_IMAGE,
-        container_name=container_name,
-        working_dir="/data/gemini-cli",
-        volumes={
-            os.environ["CODING_WORKSPACE"]: {"bind": os.environ["CODING_WORKSPACE_IN_DOCKER"], "mode": "rw"},
-            os.environ["CODING_FILES_SAVE_DIR"]: {"bind": os.environ["CODING_FILES_SAVE_DIR_IN_DOCKER"], "mode": "rw"},
-            },
-        ports={"18100": "18100"},
-        delete_tmp_files=True,
-        init_command="bash -c 'source /data/gemini-cli/run.sh'",
-        detach=True,
-        tty=True,
-        auto_remove=False,
-        auto_stop_container=True,
-    ))
-    
-    for tool in _global_tools:
-        if hasattr(tool, "start"):
-            await tool.start()
-
-    logger.info("Golbal tools initialized")
 
 async def cleanup_managers() -> None:
     """Cleanup and shutdown all manager instances"""

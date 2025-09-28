@@ -22,6 +22,7 @@ import PlanView from "./plan";
 import { IPlanStep, convertToIPlanSteps } from "../../types/plan";
 import RenderFile from "../../common/filerenderer";
 import LearnPlanButton from "../../features/Plans/LearnPlanButton";
+import { useTranslation } from "react-i18next";
 
 // Types
 interface MessageProps {
@@ -171,12 +172,13 @@ const parseContent = (content: any): string => {
 
 const parseorchestratorContent = (
   content: string,
-  metadata?: Record<string, any>
+  t: (key: string) => string,
+  metadata?: Record<string, any>,
 ) => {
   if (messageUtils.isFinalAnswer(metadata)) {
     return {
       type: "final-answer" as const,
-      content: content.substring("Final Answer:".length).trim(),
+      content: content.substring(t("Final Answer:").length).trim(),
     };
   }
 
@@ -469,10 +471,12 @@ interface RenderFinalAnswerProps {
 
 const RenderFinalAnswer: React.FC<RenderFinalAnswerProps> = memo(
   ({ content, sessionId, messageIdx }) => {
+    const { t } = useTranslation();
+    
     return (
       <div className="border-2 border-secondary rounded-lg p-4">
         <div className="flex justify-between items-center">
-          <div className="font-semibold text-primary">Final Answer</div>
+          <div className="font-semibold text-primary">{t("Final Answer")}</div>
           <LearnPlanButton
             sessionId={sessionId}
             messageId={messageIdx}
@@ -671,6 +675,8 @@ export const RenderMessage: React.FC<MessageProps> = memo(
     onRegeneratePlan,
     forceCollapsed = false,
   }) => {
+    const { t } = useTranslation();
+    
     if (!message) return null;
     if (message.metadata?.type === "browser_address") return null;
 
@@ -689,7 +695,7 @@ export const RenderMessage: React.FC<MessageProps> = memo(
 
     const orchestratorContent =
       isOrchestrator && typeof message.content === "string"
-        ? parseorchestratorContent(message.content, message.metadata)
+        ? parseorchestratorContent(message.content, t, message.metadata)
         : null;
 
     // Hide regeneration request messages

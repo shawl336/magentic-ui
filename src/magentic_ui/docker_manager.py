@@ -6,7 +6,7 @@ ensuring that containers are running when needed and managing their state.
 """
 
 import asyncio
-from typing import Optional, Dict, Union, List, Sequence, Any, Callable, ParamSpec
+from typing import Optional, Dict, Union, List, Sequence, Any, Callable, ParamSpec, Tuple
 from autogen_ext.code_executors.docker import DockerCommandLineCodeExecutor
 from pathlib import Path
 from docker.types import DeviceRequest
@@ -14,6 +14,8 @@ from autogen_core.code_executor import (
     FunctionWithRequirements,
     FunctionWithRequirementsStr,
 )
+import re
+
 try:
     import asyncio_atexit
     
@@ -42,14 +44,15 @@ class DockerManager(DockerCommandLineCodeExecutor):
         self,
         image: str,
         container_name: Optional[str] = None,
+        *,
+        success_log_pattern: Optional[str] = None,
         environment: Optional[Dict[str, str]] = None,
         volumes: Optional[Dict[str, Dict[str, str]]] = None,
         ports: Optional[Dict[str, str]] = None,
         working_dir: Optional[str] = None,
-        *,
         timeout: int = 60,
         auto_remove: bool = True,
-        auto_stop_container: bool = True,
+        stop_container: bool = True,
         device_requests: Optional[List[DeviceRequest]] = None,
         functions: Sequence[
             Union[
@@ -70,7 +73,12 @@ class DockerManager(DockerCommandLineCodeExecutor):
         Args:
             image (str): Docker image to use
             container_name (Optional[str]): Name for the container. If None, will use image name
+            success_log_pattern (Optional[str]): A regex pattern to be searched in the `docker logs` output 
+                so that the success or failure of the target process is known (not the container).
             auto_remove (bool): Whether to automatically remove the container when stopped
+            stop_container (bool, optional): If true, will automatically stop the
+                container when stop is called, when the context manager exits or when
+                the Python process exits with atext. Defaults to True.
             environment (Optional[Dict[str, str]]): Environment variables for the container
             volumes (Optional[Dict[str, Dict[str, str]]]): Volume mounts for the container
             ports (Optional[Dict[str, str]]): Port mappings for the container
@@ -88,7 +96,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
             bind_dir=None,
             timeout=timeout,
             auto_remove=auto_remove,
-            stop_container=auto_stop_container,
+            stop_container=stop_container,
             device_requests=device_requests,
             functions=functions,
             functions_module=functions_module,
@@ -115,7 +123,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
                     expanded_mount_config[expanded_key] = value
                 
                 self.volumes[expanded_host_path] = expanded_mount_config
-        
+        self._success_log_pattern: Optional[re.Pattern[str]] = re.compile(success_log_pattern, re.DOTALL) if success_log_pattern else None
         self.ports = ports or {}
         self.auto_remove = auto_remove
         self.extra_hosts = extra_hosts or {}
@@ -146,8 +154,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
                 # Get the container reference
                 client = await self._get_docker_client()
                 self._container = await asyncio.to_thread(client.containers.get, self.container_name)
-                self._running = True
-                return
+                # self._running = True # the running may not be True, because the process may not be successfully started
             elif status is not None:
                 # Container exists but not running
                 logger.info(f"Container {self.container_name} exists but is not running. Starting it...")
@@ -227,17 +234,37 @@ class DockerManager(DockerCommandLineCodeExecutor):
             
             if container.status == "running":
                 self._container = container
+                
+                # match the success log pattern to mark that the process is successfully start not just the container
+                if self._success_log_pattern:
+                    wait_for_start = 5
+                    while wait_for_start > 0:
+                        logs_str, flag = await self.get_logs(2)
+                        if not flag:
+                            self._running = False
+                            break
+                        if self._success_log_pattern.search(logs_str):
+                            break
+                        await asyncio.sleep(1)
+                        wait_for_start -= 1
+                    else:
+                        # match the success log pattern one last time
+                        logs_str, flag = await self.get_logs(2)
+                        if flag and not self._success_log_pattern.search(logs_str):
+                            # mark the container running to False, even though the container may be running
+                            self._running = False
+                                                    
+                    if not self._running:
+                        logger.error(f"Container {self.container_name} is started but the processing seems failed, \
+                                     the log pattern is not matched. Logs: \"{logs_str}\"")
+                        return False
+
                 self._running = True
                 logger.info(f"Successfully started existing container {self.container_name}")
                 return True
             else:
-                try:
-                    logs = await asyncio.to_thread(container.logs)
-                    logs_str = logs.decode('utf-8') if logs else "No logs available"
-                except NotFound:
-                    logs_str = "Container not found - may have been removed"
-                except Exception as e:
-                    logs_str = f"Error getting logs for container {self.container_name}: {e}"
+                logs_str, _ = await self.get_logs(10)
+                self._running = False
                 logger.error(f"Failed to start container {self.container_name}. Status: {container.status}, Logs: {logs_str}")
                 return False
         except NotFound:
@@ -316,7 +343,6 @@ class DockerManager(DockerCommandLineCodeExecutor):
             
             if container.status == "running":
                 self._container = container
-                self._running = True
                 
                 if self._stop_container:
                     # Register cleanup function stop the container when the process exits
@@ -325,19 +351,41 @@ class DockerManager(DockerCommandLineCodeExecutor):
                         asyncio_atexit.unregister(cleanup)  # type: ignore
                         
                     asyncio_atexit.register(cleanup)  # type: ignore
+                
+                # match the success log pattern to mark that the process is successfully start not just the container
+                if self._success_log_pattern:
+                    wait_for_start = 5
+                    while wait_for_start > 0:
+                        logs_str, flag = await self.get_logs(2)
+                        if not flag:
+                            self._running = False
+                            break
+                        if self._success_log_pattern.search(logs_str):
+                            self._running = True
+                            break
+                        await asyncio.sleep(1)
+                        wait_for_start -= 1
+                    else:
+                        # match the success log pattern one last time
+                        logs_str, flag = await self.get_logs(2)
+                        if flag and not self._success_log_pattern.search(logs_str):
+                            # mark the container running to False, even though the container may be running
+                            self._running = False
+                                                    
+                    if not self._running:
+                        logger.error(f"Container {self.container_name} is started but the processing seems failed, \
+                                     the log pattern is not matched. Logs: \"{logs_str}\"")
+                        return False
+                
+                self._running = True
                 logger.info(f"Successfully created and started container {self.container_name}")
                 return True
             else:
-                try:
-                    logs = await asyncio.to_thread(container.logs)
-                    logs_str = logs.decode('utf-8') if logs else "No logs available"
-                except NotFound:
-                    logs_str = "Container not found - may have been removed"
-                except Exception as e:
-                    logs_str = f"Error getting logs for container {self.container_name}: {e}"
-                
+                logs_str, flag = await self.get_logs(10)
                 logger.error(f"Failed to start new container {self.container_name}. Status: {container.status}, \
                     Config: {container_config}, Logs: {logs_str}")
+                # mark the container running to False, even though the container may be running
+                self._running = False
                 return False
                 
         except Exception as e:
@@ -402,7 +450,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         except Exception as e:
             logger.error(f"Error removing container {self.container_name}: {e}")
     
-    async def get_logs(self, tail: int = 100) -> str:
+    async def get_logs(self, tail: int = 100) -> Tuple[str, bool]:
         """
         Get container logs.
         
@@ -413,19 +461,19 @@ class DockerManager(DockerCommandLineCodeExecutor):
             str: Container logs
         """
         if self._container is None:
-            return ""
+            return "", True
         
         try:
             logs = await asyncio.to_thread(self._container.logs, tail=tail)
-            return logs.decode("utf-8")
+            return logs.decode("utf-8"), True
         except NotFound:
             logger.warning(f"Container {self.container_name} not found when getting logs")
             self._container = None
             self._running = False
-            return ""
+            return "", False
         except Exception as e:
             logger.error(f"Error getting logs for container {self.container_name}: {e}")
-            return ""
+            return "", False
     
     @property
     def is_running(self) -> bool:

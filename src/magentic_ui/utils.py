@@ -169,6 +169,52 @@ def thread_to_context(
         return remove_images(context)
 
 
+def _thread_to_context_only_given_name(
+    messages: List[BaseAgentEvent | BaseChatMessage],
+    agent_name: str,
+    is_multimodal: bool = False,
+    zh: bool = True,
+) -> List[LLMMessage]:
+    """Convert the message thread to a context for the model for ONLY the given agent name and user_proxy."""
+    context: List[LLMMessage] = []
+    for m in messages:
+        if isinstance(m, ToolCallRequestEvent | ToolCallExecutionEvent):
+            # Ignore tool call messages.
+            continue
+        elif isinstance(m, StopMessage | HandoffMessage):
+            context.append(UserMessage(content=m.content, source=m.source))
+        elif m.source == agent_name:
+            assert isinstance(m, TextMessage), f"{type(m)}"
+            context.append(AssistantMessage(content=m.content, source=m.source))
+        elif m.source == "user_proxy" or m.source == "user":
+            assert isinstance(m, TextMessage | MultiModalMessage), f"{type(m)}"
+            if isinstance(m.content, str):
+                human_input = HumanInputFormat.from_str(m.content)
+                content = f"{human_input.content}"
+                if human_input.plan is not None:
+                    content += f"\n\nI created the following plan: {human_input.plan}" if not zh else f"\n\n我创建了以下计划: {human_input.plan}"
+                context.append(UserMessage(content=content, source=m.source))
+            else:
+                # If content is a list, transform only the string part
+                content_list = list(m.content)  # Create a copy of the list
+                for i, item in enumerate(content_list):
+                    if isinstance(item, str):
+                        human_input = HumanInputFormat.from_str(item)
+                        content_list[i] = f"{human_input.content}"
+                        if human_input.plan is not None and isinstance(
+                            content_list[i], str
+                        ):
+                            content_list[i] = (
+                                f"{content_list[i]}\n\nI created the following plan: {human_input.plan}" if not zh else f"\n\n我创建了以下计划: {human_input.plan}"
+                            )
+                context.append(UserMessage(content=content_list, source=m.source))  # type: ignore
+
+    if is_multimodal:
+        return context
+    else:
+        return remove_images(context)
+
+
 def get_internal_urls(inside_docker: bool, paths: RunPaths) -> List[str] | None:
     if not inside_docker:
         return None

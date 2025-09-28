@@ -8,15 +8,15 @@ from pathlib import Path
 
 @dataclass
 class RunPaths:
-    f"""
+    """
     A dataclass that contains the paths to the run directories.
 
     Attributes:
         internal_root_dir (Path): The base path for all potential runs. e.g. the appdir
         external_root_dir (Path): The base path for all potential runs, currently same as internal_root_dir, e.g. the appdir
-        run_suffix (str): The suffix for the run directories. e.g. "run/user/user_id/session_id/run_id"
-        internal_run_dir (Path): The directory for the internal run. i.e {{internal_root_dir}}/{{run_suffix}}
-        external_run_dir (Path): The directory for the external run. i.e {{external_root_dir}}/{{run_suffix}}
+        run_suffix (str): The suffix for the run directories. e.g. "files/user/{user_id}/{session_id}/{run_id}"
+        internal_run_dir (Path): The directory for the internal run. i.e {internal_root_dir}/{run_suffix}
+        external_run_dir (Path): The directory for the external run. i.e {external_root_dir}/{run_suffix}
     """
 
     internal_root_dir: Path

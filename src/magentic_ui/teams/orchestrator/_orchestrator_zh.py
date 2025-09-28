@@ -386,8 +386,7 @@ class Orchestrator(BaseGroupChatManager):
             GroupChatMessage(message=message),
             topic_id=DefaultTopicId(type=self._output_topic_type),
         )
-        # lx-todo need evalutaion
-        # to avoid double putting messages to the _output_message_queue -lx
+
         await self._output_message_queue.put(message)
 
     async def _publish_group_chat_message(
@@ -410,8 +409,12 @@ class Orchestrator(BaseGroupChatManager):
             topic_id=DefaultTopicId(type=self._output_topic_type),
         )
 
+        # Manually add the message to the output message queue,
+        # because autogen prevent the sender from receiving its own messages
         await self._output_message_queue.put(message)
-
+        
+        # All participants except the sender(orchestrator, althouth it is registered to the group_topic_type)
+        # can receive the message
         await self.publish_message(
             GroupChatAgentResponse(response=Response(chat_message=message), name=self._name),
             topic_id=DefaultTopicId(type=self._group_topic_type),
