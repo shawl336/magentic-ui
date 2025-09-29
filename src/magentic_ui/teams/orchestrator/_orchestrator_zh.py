@@ -192,7 +192,7 @@ class Orchestrator(BaseGroupChatManager):
 
         # Setup internal variables
         self._setup_internals()
-
+            
     def _setup_internals(self) -> None:
         """
         Setup internal variables used in orchestrator
@@ -471,7 +471,9 @@ class Orchestrator(BaseGroupChatManager):
                     else False,
                     cancellation_token=cancellation_token,
                 )
+                
                 assert isinstance(response.content, str)
+            
                 try:
                     json_response = json.loads(response.content)
                     # Use the validate_json function to check the response
@@ -932,6 +934,13 @@ class Orchestrator(BaseGroupChatManager):
                 cancellation_token=cancellation_token,
             )
             self._state.in_planning_mode = False
+            
+            #lx-todo, need verification,
+            # Is this the first step and a simple request needing no plans?
+            if not plan_response['needs_plan'] or len(plan_response['steps']) < 1:
+                await self._request_next_speaker(self._user_agent_topic, cancellation_token)
+                return
+            
             await self._orchestrate_step_execution(cancellation_token, first_step=True)
 
     async def _orchestrate_step_execution(

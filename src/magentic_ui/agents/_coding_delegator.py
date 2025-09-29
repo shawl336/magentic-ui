@@ -1,10 +1,9 @@
 import asyncio
 from pathlib import Path
 import shutil
-from token import OP
-from typing import AsyncGenerator, List, Sequence, Optional, Dict
+from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping
+from typing_extensions import Annotated
 import json, os
-from typing import Any, Mapping
 from autogen_core.tools import Workbench
 from loguru import logger
 from datetime import datetime
@@ -36,10 +35,18 @@ from autogen_agentchat.messages import (
     ToolCallRequestEvent,
     BaseTextChatMessage,
 )
+from autogen_core import FunctionCall
+from autogen_core.models import (
+    FunctionExecutionResult,
+    AssistantMessage,
+    FunctionExecutionResultMessage,
+)
+
+from autogen_core.tools import FunctionTool
 
 from magentic_ui.tools.playwright.browser.utils import get_available_port
-
-from ..utils import thread_to_context, _thread_to_context_only_given_name
+from ._utils import notify_to_download
+from ..utils import thread_to_context
 
 from ..approval_guard import BaseApprovalGuard
 from ..guarded_action import ApprovalDeniedError, TrivialGuardedAction
@@ -149,15 +156,14 @@ class CodingDelegatorAgentConfig(BaseModel):
     run_id: int
     model_client: ComponentModel
     description: str = """
-    一个可以写代码和执行代码的智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(bug)或回答代码相关的问题等任何和代码有关的任务。
-    你可以同时指定代码的路经和代码文件，让此智能体将代码生成在指定路径中，或者在基于给定的代码文件内容进行修改代码、解释代码等操作。
-    请将任何代码相关的任务交给此智能体。
     """
     max_reties: int = 3
     summarize_output: bool = False
     coding_provider: str
-    work_dir: Path
-    bind_dir: Path
+    work_root: str
+    work_relative_dir: str
+    bind_root: str
+    bind_relative_dir: str
     # Optionally add code_executor config if needed
 
 
@@ -179,50 +185,57 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     component_provider_override = "magentic_ui.agents.CodingAgent"
     
     DEFAULT_DESCRIPTION = """
-    这是一个代码智能体。它可以解释代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
+    这是一个代码智能体。它可以解释代码、下载代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
     你可以同时指定代码的路经和代码文件，让此智能体将代码生成在指定路径中，或者在基于给定的代码文件内容进行修改代码、解释代码等操作。
     请将任何代码相关的任务交给此智能体。
+    需要注意: 这个智能体只负责下载它生成的代码文件，不负责其他的下载任务。
     """
 
     system_prompt_coding_agent_template = """
     你是{name}, 一个代码智能体，但是你不会直接写代码，也不要写代码，你只是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
     你要客观地分析用户的输入并提取相关的信息，然后将提取到的相关信息以JSON的格式输出。
-    
+    你位于服务器端，用户是客户端。
+    用户也许会请求下载、保存文件(夹)，你没法直接把文件发送到用户所在客户端，但是你可以调用工具通知用户去下载服务器端上的这些文件或者文件夹。
+
     今天的日期是:{date_today}
     
     <输入>
     用户的输入大致可以分为三种情况
-    1. 用户的输入提出代码相关的需求，并且包含代码的保存路径，你需要将代码的需求和用户要求的生成路径提取并且分开，但是不要篡改用户的需求。
-    2. 用户的输入提出代码相关的需求，但是不含代码的保存路径，这时你只需要一字不差地的转述用户的输入。
-    3. 用户的输入和代码需求无关，只是普通的交流或者回答问题，这时你只需要一字不差地的转述用户的输入。
+    1. 用户的输入提出代码相关的请求，并且包含代码的保存路径，你需要将代码的请求和用户要求的生成路径提取并且分开，但是不要篡改用户的请求。
+    2. 用户的输入提出代码相关的请求，但是不含代码的保存路径，这时你只需要一字不差地的转述用户的输入。
+    3. 用户的输入和代码请求无关，只是普通的交流或者回答问题，这时你只需要一字不差地的转述用户的输入。
+    4. 用户的请求是需要调用工具，比如使用下载工具下载代码，这时你需要将用户的请求转换为工具调用。
     
     * 第2和第3种情况的处理方法是一样，你只需要一字不差地的转述用户的输入。
     
     用户输入的例子：
-    - "帮我写一个Hello World的程序，并且保存在generate/test.py文件中" （代码需求，包含保存路径）
-    - "用python写一个贪吃蛇游戏" （代码需求，但不包含保存路径）
+    - "帮我写一个Hello World的程序，并且保存在generate/test.py文件中" （代码请求，包含保存路径）
+    - "用python写一个贪吃蛇游戏" （代码请求，但不包含保存路径）
     - "是的" (普通交流)
-    - "用python" (回答代码问题，但不是提出代码需求)
-    - "保存在/home/user/test.py文件中" (回答路径存储问题，但不是提出代码需求)
+    - "用python" (回答代码问题，但不是提出代码请求)
+    - "保存在/home/user/test.py文件中" (回答路径存储问题，但不是提出代码请求)
     
     </输入>
 
     <输出>
-    你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。:
+    对应不同类型的用户输入请求输出分为以下几种情况:
+    1. 对于<输入>中的第1，第2和第3种情况，你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。:
     
     ```json
     {{
-        "request": "用户的需求",
+        "request": "用户的请求",
         "save_path": "用户指定的生成路径，如果用户没有指定，则取空字符串",
     }}
     ```
+    
+    2. 对于<输入>的第4种情况，你的输出没有特别要求，只要正常的调用对应的工具就行。
     </输出>
     
     
     <例子>
     例子不会包含全部的情况，仅仅提供参考，你需要举一反三，根据上下文做出合适的判断。
     
-    例子 1： 用户提出代码需求，你分析提取**代码需求**和**保存路径**，将**代码需求**和**保存路径**信息分开填入对应的JSON字段。
+    例子 1： 用户提出代码请求，你分析提取**代码请求**和**保存路径**，将**代码请求**和**保存路径**信息分开填入对应的JSON字段。
     输入： 帮我写一个Hello World的程序，并且保存在generate/test.py文件中。 
     输出：
         ```json
@@ -232,7 +245,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         }}
         ```
     
-    例子 2：用户提出了代码需求但是没有提到保存路径，{{request}}字段填入用户的需求，{{save_path}}字段取空字符串。
+    例子 2：用户提出了代码请求但是没有提到保存路径，{{request}}字段填入用户的请求，{{save_path}}字段取空字符串。
     输入： 用python写一个贪吃蛇游戏。 
     输出：
         ```json
@@ -242,7 +255,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         }}
         ```
         
-    例子 3：用户虽然提到了保存路径，但是这不是代码需求，可能是用户和另一个智能体的交流，你只需要一字不差地将用户的输入填入{{request}}字段，{{save_path}}字段取空字符串。
+    例子 3：用户虽然提到了保存路径，但是这不是代码请求，可能是用户和另一个智能体的交流，你只需要一字不差地将用户的输入填入{{request}}字段，{{save_path}}字段取空字符串。
     输入： 保存在/home/user/test.py文件中。 
     输出：
         ```json
@@ -255,23 +268,24 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
 
       
     <严格遵守的规则>:
-    - 严格尊重用户的输入需求，不要篡改用户的需求，或者加入你的主观意见。
-    - 严格遵循<输出>规定的JSON格式，不要输出JSON格式以外的任何信息。
+    - 严格尊重用户的输入请求，不要篡改用户的请求，或者加入你的主观意见。
+    - 如果输出是JSON，则严格遵循<输出>规定的JSON格式，不要输出JSON格式以外的任何信息。
     - **保存路径**只能填入{{save_path}}字段，且只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，{{save_path}}字段必须取空字符串:\"\"。
-    - **代码需求**只能填入{{request}}，且不要包含提取的**保存路径**信息。
+    - **代码请求**只能填入{{request}}，且不要包含提取的**保存路径**信息。
     </严格遵守的规则>
     
     重点注意:
     - 你不会写代码，也不要写代码，你只负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体。
+    - 你可以调用工具，调用工具不需要你特点的JSON格式，只要正常调用工具就行。
 
     """
     
-    # todo: need complement
+    #lx-todo: need complement
     system_prompt_coding_agent_template_tool_based = """
-    你是一个中间人，负责客观地分析用户的输入并提取相关的信息，并将用户的需求转换为工具调用。
+    你是一个中间人，负责客观地分析用户的输入并提取相关的信息，并将用户的请求转换为工具调用。
     
     注意要求:
-    - 你不要加入任何主观意见或者解释，直接将用户的需求转换工具调用。
+    - 你不要加入任何主观意见或者解释，直接将用户的请求转换工具调用。
     - 你不要输出任何其他信息，只输出工具调用。
     """
 
@@ -281,8 +295,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         run_id: int,
         model_client: ChatCompletionClient,
         coding_provider: str,
-        work_dir: Path,
-        bind_dir: Path,
+        work_root: Path,
+        work_relative_dir: Path,
+        bind_root: Path,
+        bind_relative_dir: Path,
         code_manager: Optional[DockerManager] = None,
         model_context_token_limit: int = 128000,
         description: str = DEFAULT_DESCRIPTION,
@@ -296,8 +312,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name (str): The name of the agent
             model_client (ChatCompletionClient): The language model client to use.
             coding_tools: the NamedMcpServerParams specifying the coding provider MCP server.
-            work_dir (Path | str): Working directory to save generated code files in the local filesystem. Default: None.
-            bind_dir (Path | str): Working directory to save generated code files in Docker container. Default: None.
+            work_root (Path): Working root directory of this run session.
+            work_relative_dir (Path): Directory relative to {work_root} to save generated code files in the local filesystem. 
+            bind_root (Path): Working root directory of this run session inside Docker container.
+            bind_relative_dir (Path): Relative directory to save generated code files inside Docker container.
             code_manager (CodeExecutor): It does not execute code curerently, 
                 but utilize the code_manager to run the coding provider MCP server. Default: None.
             coding_provider (str): The name of the coding tool provided by the code_manger MCP. Default: "gemini_cli".
@@ -319,12 +337,23 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         self._approval_guard = approval_guard
         self._did_lazy_init = False
         self._cleanup_work_dir = False
-        self._work_dir = work_dir
-        self._bind_dir = bind_dir
+        self._work_root = work_root
+        self._work_relative_dir = work_relative_dir
+        self._bind_root = bind_root
+        self._bind_relative_dir = bind_relative_dir
         self._coding_provider = coding_provider
         self._code_manager = code_manager
         self._coding_workbench = None
-            
+    
+        self._tools = self._setup_tools()
+    
+    def _setup_tools(self) -> List[FunctionTool]:
+        """
+        Setup tools used in orchestrator
+        """
+        return [FunctionTool(self.notify_to_download, 
+                             description=self.notify_to_download.__doc__ or "")]
+    
     async def lazy_init(self) -> None:
         """Initialize the code executor if it has a start method.
 
@@ -359,7 +388,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 working_dir=os.environ["CODING_WORKSPACE_IN_DOCKER"],
                 volumes={
                     os.environ["CODING_WORKSPACE"]: {"bind": os.environ["CODING_WORKSPACE_IN_DOCKER"], "mode": "rw"},
-                    str(self._work_dir): {"bind": str(self._bind_dir), "mode": "rw"},
+                    str(self._work_root / self._work_relative_dir): {"bind": str(self._bind_root / self._bind_relative_dir), "mode": "rw"},
                     },
                 ports={"18100/tcp": str(port)}, # docker port is 18100/tcp, local port is the latter
                 delete_tmp_files=True,
@@ -388,8 +417,8 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         # self._code_manager will not be None
         await self._code_manager.stop() # type: ignore
         # Remove the work directory if it was created.
-        if self._cleanup_work_dir and self._work_dir.exists():
-            await asyncio.to_thread(shutil.rmtree, self._work_dir)
+        if self._cleanup_work_dir and (self._work_root / self._work_relative_dir).exists():
+            await asyncio.to_thread(shutil.rmtree, self._work_root / self._work_relative_dir)
         # Close the model client.
         await self._model_client.close()
 
@@ -463,7 +492,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 thread=self._chat_history,
                 agent_name=self.name,
                 coding_provider=self._coding_provider,
-                bind_dir=self._bind_dir,
+                save_dir_in_docker=self._bind_relative_dir,
                 model_client=self._model_client,
                 workbench=self._coding_workbench, # type: ignore
                 max_json_retries=self._max_reties,
@@ -555,7 +584,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         model_client: ChatCompletionClient,
         workbench: Workbench,
         coding_provider: str,
-        bind_dir: Path,
+        save_dir_in_docker: Path,
         max_json_retries: int,
         cancellation_token: CancellationToken,
         model_context: ChatCompletionContext,
@@ -644,6 +673,48 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     else False,
                     cancellation_token=cancellation_token,
                 )
+                
+                  
+                # List[FunctionCall]
+                if not isinstance(delegated_result.content, str):
+                    await self._model_context.add_message(AssistantMessage(content=delegated_result.content, source=self._name))
+                    tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in delegated_result.content])
+                    
+                    delegated_result = await self._model_client.create(
+                        token_limited_context,
+                        json_output=True
+                        if self._model_client.model_info["json_output"]
+                        else False,
+                        cancellation_token=cancellation_token,
+                        tools=self._tools
+                    )  
+                    
+                    await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
+                    tool_call_result_text = tool_call_results[0].content
+                    # send the download notification to the client, the type "auto_download_file" is used to identify the download notification
+                    if not tool_call_results[0].is_error:
+                        yield TextMessage(
+                            content = tool_call_result_text,
+                            source=agent_name,
+                            metadata={"type": "auto_download_file"},
+                        )   
+                    
+                    delegated_result = await self._model_client.create(
+                        token_limited_context,
+                        json_output=True
+                        if self._model_client.model_info["json_output"]
+                        else False,
+                        cancellation_token=cancellation_token
+                    )  
+                    
+                    assert isinstance(delegated_result.content, str)
+                    yield TextMessage(
+                        content = delegated_result.content,
+                        source=agent_name,
+                        metadata={"finished": "yes"},
+                    )   
+                    return
+                
                 assert isinstance(delegated_result.content, str)
                 try:
                     logger.debug(f"Coding Delegator Agent: {delegated_result.content}")
@@ -681,7 +752,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         # call the coding tool
         
         # currently, not allowing customized generating path
-        delegated_json_response["save_path"] = str(bind_dir)
+        delegated_json_response["save_path"] = str(save_dir_in_docker)
         # delegated_json_response will not be appended to the chat_history
 
         delegated_json_response["request"] = "上下文和历史对话消息:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n 当前输入:\n" + delegated_json_response["request"]
@@ -701,11 +772,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         
         tool_call_result_text = tool_call_result.to_text()
         yield TextMessage(
-            content = tool_call_result_text if tool_call_result_text else "调用代码工具没有返回结果，出现错误，代码工具使用",
+            content = tool_call_result_text if tool_call_result_text else "调用代码工具没有返回结果，出现错误，代码工具无法使用",
             source=agent_name,
             metadata={"finished": "yes"},
         )   
-            
     
     def validate_tool_parameters(self, tool: ToolSchema) -> bool:
         """Validate the tool parameters."""
@@ -733,14 +803,58 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """Clear the chat history."""
         self._chat_history.clear()
 
+    
+    async def _execute_tool_call(
+        self, call: FunctionCall, cancellation_token: CancellationToken
+    ) -> FunctionExecutionResult:
+        # Find the tool by name.
+        tool = next((tool for tool in self._tools if tool.name == call.name), None)
+        assert tool is not None
+
+        # Run the tool and capture the result.
+        try:
+            arguments = json.loads(call.arguments)
+            result = await tool.run_json(arguments, cancellation_token)
+            return FunctionExecutionResult(
+                call_id=call.id, content=tool.return_value_as_string(result), is_error=False, name=tool.name
+            )
+        except Exception as e:
+            return FunctionExecutionResult(call_id=call.id, content=str(e), is_error=True, name=tool.name)
+        
+    async def notify_to_download(
+        self,
+        file_and_directory_list: Annotated[List[str], "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
+        target_directory: Annotated[str | None, "用户指定的下载存放路径，是客户端上的路径，与服务端无关。如果没有给定下载则不要指定，如果给空字符串也等价于没有指定下载路径"]
+        ) -> str:
+        r"""
+        通知用户(客户端)下载file_and_directory_list列表中给定的文件和文件夹。
+        target_directory是用户(客户端)上的下载保存路径，如果用户指定了则为用户指定的路径，否则为空字符串。
+        此函数在FastAPI服务器端运行，用于准备文件供客户端下载。
+        
+        参数:
+            file_and_directory_list: 需要发送给客户端的文件/文件夹路径列表
+            target_directory: 客户端下载文件的目标路径（用于生成下载链接）
+            
+        返回:
+            json: {
+                "available_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
+                "nonexist_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
+                "target_directory": target_directory
+            }
+        """
+        dict_res = await notify_to_download(str(self._work_root), file_and_directory_list, target_directory)
+        return json.dumps(dict_res, ensure_ascii=False, indent=4)
+
     def _to_config(self) -> CodingDelegatorAgentConfig:
         """Convert the agent's state to a configuration object."""
         return CodingDelegatorAgentConfig(
             name=self.name,
             run_id=self._run_id,
             model_client=self._model_client.dump_component(),
-            work_dir=self._work_dir,
-            bind_dir=self._bind_dir,
+            work_root=str(self._work_root),
+            work_relative_dir=str(self._work_relative_dir),
+            bind_root=str(self._bind_root),
+            bind_relative_dir=str(self._bind_relative_dir),
             coding_provider=self._coding_provider,
             description=self.description,
             max_reties=self._max_reties,
@@ -755,8 +869,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             name=config.name,
             run_id=config.run_id,
             model_client=ChatCompletionClient.load_component(config.model_client),
-            work_dir=config.work_dir,
-            bind_dir=config.bind_dir,
+            work_root=Path(config.work_root),
+            work_relative_dir=Path(config.work_relative_dir),
+            bind_root=Path(config.bind_root),
+            bind_relative_dir=Path(config.bind_relative_dir),
             coding_provider=config.coding_provider,
             description=config.description,
             max_reties=config.max_reties,

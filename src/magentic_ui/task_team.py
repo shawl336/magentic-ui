@@ -109,6 +109,8 @@ async def get_task_team(
         allow_follow_up_input=magentic_ui_config.allow_follow_up_input,
         final_answer_prompt=magentic_ui_config.final_answer_prompt,
         sentinel_plan=magentic_ui_config.sentinel_plan,
+        internal_run_dir=str(paths.internal_run_dir),
+        external_run_dir=str(paths.external_run_dir),
     )
     websurfer_model_client = magentic_ui_config.model_client_configs.web_surfer
     if websurfer_model_client is None:
@@ -226,17 +228,23 @@ async def get_task_team(
     # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
     model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
 
-    # {appdir}/files/user/{user_id}/{session_id}/{run_id}/coding
-    coding_work_dir = paths.internal_run_dir / "coding"
-    # /data/gemini-cli/generate/{run_id}/coding
-    coding_bind_dir = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) / "generate" / str(run_id) /"coding"
+    # These work/bind root dir are designed to make the agents see the files in the same RELATIVE paths
+    # in both the local filesystem and the docker container
+    # {appdir}/files/user/{user_id}/{session_id}/{run_id}, NOTE currently {session_id} == {run_id}
+    coding_work_root = paths.internal_run_dir
+    work_relative_dir = Path("coding")
+    # /data/gemini-cli
+    coding_bind_root = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) 
+    coding_bind_relative_dir = Path(f"files/{str(run_id)}/coding")
     
     coding_agent = CodingDelegatorAgent(
         name="coding_agent",
         model_client=model_client_coder,
         coding_provider="gemini_cli",
-        work_dir=coding_work_dir,
-        bind_dir=coding_bind_dir,
+        work_root=coding_work_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=coding_bind_root,
+        bind_relative_dir=coding_bind_relative_dir,
         run_id=run_id,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
@@ -262,7 +270,7 @@ async def get_task_team(
         memory_provider = None
 
     team_participants: List[ChatAgent | Team] = [
-        web_surfer,
+        # web_surfer, lx-todo, may uncomment it
         user_proxy,
     ]
     if not magentic_ui_config.run_without_docker:
