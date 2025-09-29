@@ -7,6 +7,7 @@ import {
   Message,
   WebSocketMessage,
   InputRequestMessage,
+  AutoDownloadFileMessage,
   TeamConfig,
   AgentMessageConfig,
   RunStatus as BaseRunStatus,
@@ -144,6 +145,93 @@ export default function ChatView({
     run_id: runId,
     user_id: user?.email || undefined,
   });
+
+  // Handle file download with new file_list structure
+  const handleFileDownload = (fileList: AutoDownloadFileMessage['file_list']) => {
+    const { available_files, target_directory } = fileList;
+
+    if (!available_files || available_files.length === 0) {
+      messageApi.warning('没有可下载的文件');
+      return;
+    }
+
+    // Filter only files (skip directories as per requirement)
+    const filesToDownload = available_files.filter(file => file.type === 'file');
+
+    if (filesToDownload.length === 0) {
+      messageApi.info('只有目录需要下载，跳过文件下载');
+      return;
+    }
+
+    // Show download progress
+    const totalFiles = filesToDownload.length;
+    if (totalFiles > 1) {
+      messageApi.info(`开始下载 ${totalFiles} 个文件...`);
+    }
+
+    // Process each file
+    filesToDownload.forEach((file, index) => {
+      try {
+        // Skip directories as per requirement
+        if (file.type === 'directory') {
+          console.log(`Skipping directory: ${file.name}`);
+          return;
+        }
+
+        const runId = currentRun?.id;
+        if (!runId) {
+          console.error('无法获取运行ID');
+          return;
+        }
+
+        // Construct API download URL: /api/runs/{run_id}/download/{file_path:path}
+        const downloadUrl = `${serverUrl}/api/runs/${runId}/download/${encodeURIComponent(file.name)}`;
+
+        // Create download link that navigates to the API endpoint
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.target = "_blank"; // Open in new tab to trigger download
+
+        // If target_directory is provided, we can use it as a hint
+        // Note: Modern browsers don't allow setting custom download paths for security reasons
+        if (target_directory) {
+          console.log(`Download hint: save ${file.name} to ${target_directory}`);
+        }
+
+        // Add to DOM and trigger download
+        document.body.appendChild(link);
+
+        // For multiple files, add a small delay to avoid overwhelming the browser
+        setTimeout(() => {
+          link.click();
+          document.body.removeChild(link);
+
+          // Show progress for multiple files
+          if (totalFiles > 1) {
+            console.log(`Downloaded ${index + 1}/${totalFiles}: ${file.name}`);
+            if (index === totalFiles - 1) {
+              messageApi.success(`所有 ${totalFiles} 个文件下载完成`);
+            }
+          }
+        }, index * 500); // 500ms delay between downloads
+
+      } catch (error) {
+        console.error(`Error downloading ${file.name}:`, error);
+        messageApi.error(`下载失败: ${file.name}`);
+      }
+    });
+
+    // For single file, show immediate success
+    if (totalFiles === 1) {
+      const file = filesToDownload[0];
+      console.log(`File download initiated: ${file.name} (${file.type})`);
+      if (!target_directory) {
+        messageApi.success(`下载完成: ${file.name} (保存到默认下载目录)`);
+      } else {
+        messageApi.success(`下载完成: ${file.name} (目标目录: ${target_directory})`);
+      }
+    }
+  };
 
   const loadSessionRun = async () => {
     if (!session?.id || !user?.email) return null;
@@ -400,6 +488,12 @@ export default function ChatView({
             status: "awaiting_input",
             input_request: input_request,
           };
+
+        case "auto_download_file":
+          // 处理文件下载请求
+          const download_message = message as AutoDownloadFileMessage;
+          handleFileDownload(download_message.file_list);
+          return current; // 返回当前状态，不修改
         case "system":
           // update run status
           return {

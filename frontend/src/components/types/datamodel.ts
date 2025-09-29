@@ -117,7 +117,8 @@ export interface WebSocketMessage {
     | "completion"
     | "input_request"
     | "error"
-    | "system";
+    | "system"
+    | "auto_download_file";
   data?: AgentMessageConfig | TaskResult;
   input_type?: InputType;
   status?: RunStatus;
@@ -129,6 +130,21 @@ export interface InputRequestMessage extends WebSocketMessage {
   type: "input_request";
   input_type: InputType;
   prompt: string;
+}
+
+export interface AutoDownloadFileMessage extends WebSocketMessage {
+  type: "auto_download_file";
+  file_list: {
+    available_files: Array<{
+      name: string;
+      type: "file" | "directory";
+    }>;
+    nonexist_files: Array<{
+      name: string;
+      type: "file" | "directory";
+    }>;
+    target_directory?: string; // 下载目标目录，如果没有提供则使用默认下载路径
+  };
 }
 
 export interface TaskResult {
