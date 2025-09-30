@@ -81,14 +81,19 @@ async def notify_to_download(
             full_path = path[start_idx:]
             relative_path = path[start_idx + len(run_dir):]
         else:
-            full_path = path
-            relative_path = path
-            
+            # is this a single filename?
+            filename = os.path.basename(path)
+            if filename == path:
+                full_path = os.path.join(run_dir, filename)
+                relative_path = filename
+            else:
+                full_path = path
+                relative_path = path
         
         if os.path.exists(full_path):
             available_files.append({"name": relative_path, "type": "file" if os.path.isfile(full_path) else "directory"})
         else:
-            nonexist_files.append({"name": relative_path, "type": "file" if os.path.isfile(full_path) else "directory"})
+            nonexist_files.append({"name": relative_path, "type": "unknown"})
             
     return {
         "available_files": available_files,

@@ -935,7 +935,7 @@ class Orchestrator(BaseGroupChatManager):
             )
             self._state.in_planning_mode = False
             
-            #lx-todo, need verification,
+            #lx-todo, need verification, sometimes generate a empty plan to ask the user for accept
             # Is this the first step and a simple request needing no plans?
             if not plan_response['needs_plan'] or len(plan_response['steps']) < 1:
                 await self._request_next_speaker(self._user_agent_topic, cancellation_token)

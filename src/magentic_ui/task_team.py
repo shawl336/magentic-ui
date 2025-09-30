@@ -231,11 +231,11 @@ async def get_task_team(
     # These work/bind root dir are designed to make the agents see the files in the same RELATIVE paths
     # in both the local filesystem and the docker container
     # {appdir}/files/user/{user_id}/{session_id}/{run_id}, NOTE currently {session_id} == {run_id}
-    coding_work_root = paths.internal_run_dir
-    work_relative_dir = Path("coding")
+    coding_work_root = paths.internal_root_dir # path.internal_root_dir + path.run_suffix
+    work_relative_dir = Path(paths.run_suffix)
     # /data/gemini-cli
     coding_bind_root = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) 
-    coding_bind_relative_dir = Path(f"files/{str(run_id)}/coding")
+    coding_bind_relative_dir = Path(paths.run_suffix) # coding_bind_root + path.run_suffix
     
     coding_agent = CodingDelegatorAgent(
         name="coding_agent",

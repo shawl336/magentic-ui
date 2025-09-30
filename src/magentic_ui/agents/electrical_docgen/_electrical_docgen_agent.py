@@ -451,7 +451,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         docx_text = "\n".join([paragraph.text for paragraph in docx_obj.paragraphs])
         yield Response(
             chat_message=TextMessage(
-                content=f"文档已经生成，内容为:{docx_text}",
+                content=f"文档已经生成，并保存在文件中",
                 source=self.name,
                 models_usage=model_result.usage,
             ),

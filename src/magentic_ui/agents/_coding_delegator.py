@@ -200,11 +200,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     今天的日期是:{date_today}
     
     <输入>
-    用户的输入大致可以分为三种情况
-    1. 用户的输入提出代码相关的请求，并且包含代码的保存路径，你需要将代码的请求和用户要求的生成路径提取并且分开，但是不要篡改用户的请求。
-    2. 用户的输入提出代码相关的请求，但是不含代码的保存路径，这时你只需要一字不差地的转述用户的输入。
-    3. 用户的输入和代码请求无关，只是普通的交流或者回答问题，这时你只需要一字不差地的转述用户的输入。
-    4. 用户的请求是需要调用工具，比如使用下载工具下载代码，这时你需要将用户的请求转换为工具调用。
+    对于用户的输入，首先考虑如下问题:
+    1. 用户的输入是否提出代码相关的请求，且包含代码的保存路径？ 如果是，你需要将代码的请求和用户要求的生成路径提取并且分开，但是不要篡改用户的请求。
+    2. 用户的输入是否提出代码相关的请求，但是不含代码的保存路径？ 如果是，这时你只需要一字不差地的转述用户的输入。
+    3. 用户的输入是否和代码请求无关，只是普通的交流或者回答问题？ 如果是，这时你只需要一字不差地的转述用户的输入。
+    4. 用户的请求是否是需要调用工具？ 比如使用下载工具下载代码。如果是，这时你需要将用户的请求转换为工具调用。
     
     * 第2和第3种情况的处理方法是一样，你只需要一字不差地的转述用户的输入。
     
@@ -219,7 +219,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
 
     <输出>
     对应不同类型的用户输入请求输出分为以下几种情况:
-    1. 对于<输入>中的第1，第2和第3种情况，你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。:
+    1. 对于<输入>中的第1，第2和第3种情况，你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。
     
     ```json
     {{
@@ -269,14 +269,14 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
       
     <严格遵守的规则>:
     - 严格尊重用户的输入请求，不要篡改用户的请求，或者加入你的主观意见。
-    - 如果输出是JSON，则严格遵循<输出>规定的JSON格式，不要输出JSON格式以外的任何信息。
+    - 对于不用的输入类型，如果要求你输出JSON，则严格遵循<输出>规定的JSON格式，不要输出JSON格式以外的任何信息。
     - **保存路径**只能填入{{save_path}}字段，且只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，{{save_path}}字段必须取空字符串:\"\"。
     - **代码请求**只能填入{{request}}，且不要包含提取的**保存路径**信息。
     </严格遵守的规则>
     
     重点注意:
     - 你不会写代码，也不要写代码，你只负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体。
-    - 你可以调用工具，调用工具不需要你特点的JSON格式，只要正常调用工具就行。
+    - 你可以调用工具，调用工具不需要你输出JSON格式，只要正常调用工具就行。
 
     """
     
@@ -492,7 +492,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 thread=self._chat_history,
                 agent_name=self.name,
                 coding_provider=self._coding_provider,
-                save_dir_in_docker=self._bind_relative_dir,
+                bind_relative_dir=self._bind_relative_dir,
                 model_client=self._model_client,
                 workbench=self._coding_workbench, # type: ignore
                 max_json_retries=self._max_reties,
@@ -584,7 +584,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         model_client: ChatCompletionClient,
         workbench: Workbench,
         coding_provider: str,
-        save_dir_in_docker: Path,
+        bind_relative_dir: Path,
         max_json_retries: int,
         cancellation_token: CancellationToken,
         model_context: ChatCompletionContext,
@@ -674,7 +674,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     cancellation_token=cancellation_token,
                 )
                 
-                  
+                '''
                 # List[FunctionCall]
                 if not isinstance(delegated_result.content, str):
                     await self._model_context.add_message(AssistantMessage(content=delegated_result.content, source=self._name))
@@ -714,6 +714,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                         metadata={"finished": "yes"},
                     )   
                     return
+                ''' 
                 
                 assert isinstance(delegated_result.content, str)
                 try:
@@ -752,7 +753,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         # call the coding tool
         
         # currently, not allowing customized generating path
-        delegated_json_response["save_path"] = str(save_dir_in_docker)
+        delegated_json_response["save_path"] = str(bind_relative_dir)
         # delegated_json_response will not be appended to the chat_history
 
         delegated_json_response["request"] = "上下文和历史对话消息:\n" + "\n".join(i.content for i in context if isinstance(i.content, str)) + "\n 当前输入:\n" + delegated_json_response["request"]
@@ -765,10 +766,33 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error when calling MCP tool: {e}")
             raise Exception("调用代码MCP工具失败，http错误") from e
-            
+        
         except Exception as e:
             logger.error(f"Unexpected error when calling MCP tool: {e}")
             raise Exception("调用代码MCP工具失败，遇到未知错误，无法修复") from e
+        
+        ''' Temporarily, always find all generated codes and notify the user to download '''
+        work_path = self._work_root / self._work_relative_dir
+        assert work_path.exists()
+        file_list: List[str] = []
+        for root, dirs, files in os.walk(work_path, topdown=False):
+            for file in files:
+                file_path = Path(root) / file
+                relative_path = file_path.relative_to(work_path)
+                file_list.append(str(relative_path))
+            for dir_name in dirs:
+                dir_path = Path(root) / dir_name
+                relative_path = dir_path.relative_to(work_path)
+                file_list.append(str(relative_path))
+        
+        if file_list:
+            logger.debug("Notify to download")
+            download_file_list = await self.notify_to_download(file_list, None)
+            yield TextMessage(
+                    content=download_file_list,
+                    source=agent_name,
+                    metadata={"type": "auto_download_file"},
+                )  
         
         tool_call_result_text = tool_call_result.to_text()
         yield TextMessage(
@@ -842,7 +866,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 "target_directory": target_directory
             }
         """
-        dict_res = await notify_to_download(str(self._work_root), file_and_directory_list, target_directory)
+        dict_res = await notify_to_download(str(self._work_root / self._work_relative_dir), file_and_directory_list, target_directory)
         return json.dumps(dict_res, ensure_ascii=False, indent=4)
 
     def _to_config(self) -> CodingDelegatorAgentConfig:
