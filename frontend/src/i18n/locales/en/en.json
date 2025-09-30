@@ -105,8 +105,7 @@
   "Open Sidebar": "Open Sidebar",
   "Close Sidebar": "Close Sidebar",
   "Create New Session": "Create New Session",
-  "Enter a username.": "Enter a username.",
-  "A change of username will create a new profile.": "A change of username will create a new profile.",
+  "Enter a username. <br></br> A change of username will create a new profile.": "Enter a username. <br></br> A change of username will create a new profile.",
   "Current Session": "Current Session",
   "Saved Plans": "Saved Plans",
   "Sessions": "Sessions",
@@ -223,6 +222,7 @@
   "Disconnect": "Disconnect",
   "Delete": "Delete",
   "Loading session...": "Loading session...",
+  "Default Session - ": "Default Session - ",
 
   "Segment Error": "---------------------------------",
   "Error saving session": "Error saving session",

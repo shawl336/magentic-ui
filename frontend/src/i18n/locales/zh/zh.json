@@ -105,8 +105,7 @@
   "Open Sidebar": "打开侧边栏",
   "Close Sidebar": "关闭侧边栏",
   "Create New Session": "创建新会话",
-  "Enter a username.": "请输入用户名",
-  "A change of username will create a new profile.": "更改用户名将创建一个新配置文件",
+  "Enter a username. <br></br> A change of username will create a new profile.": "请输入用户名 <br></br> 更改用户名将创建一个新配置文件",
   "Current Session": "当前会话",
   "Saved Plans": "已保存的计划",
   "Sessions": "会话",
@@ -223,6 +222,7 @@
   "Disconnect": "断开连接",
   "Delete": "删除",
   "Loading session...": "载入会话...",
+  "Default Session - ": "默认会话 - ",
 
   "Segment Error": "---------------------------------",
   "Error saving session": "保存会话时出错",

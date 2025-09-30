@@ -1370,8 +1370,9 @@ export default function ChatView({
                   selectedMcpServers={selectedMcpServers}
                   onSelectedMcpServersChange={setSelectedMcpServers}
                 />
-              </div>
-              <SampleTasks
+              </div> 
+              {/* disabled the sample task */}
+              {/* <SampleTasks
                 onSelect={(task: string) => {
                   if (chatInputRef.current) {
                     // Set the input value and trigger submit
@@ -1400,7 +1401,7 @@ export default function ChatView({
                     }, 100);
                   }
                 }}
-              />
+              /> */}
             </div>
           )}
         </div>

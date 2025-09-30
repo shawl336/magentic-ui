@@ -134,10 +134,10 @@ export const SessionManager: React.FC = () => {
           {
             ...sessionData,
             name:
-              "Default Session - " +
+              t("Default Session - ") +
               new Date().toLocaleDateString(undefined, {
                 year: "numeric",
-                month: "long",
+                month: "short",
                 day: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
