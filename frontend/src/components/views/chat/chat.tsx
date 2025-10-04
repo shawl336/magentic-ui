@@ -84,7 +84,7 @@ export default function ChatView({
   const serverUrl = getServerUrl();
   const [error, setError] = React.useState<IStatus | null>({
     status: true,
-    message: "All good",
+    message: t("All good"),
   });
   const [updatedPlan, setUpdatedPlan] = React.useState<IPlanStep[]>([]);
   const [localPlan, setLocalPlan] = React.useState<IPlan | null>(null);
