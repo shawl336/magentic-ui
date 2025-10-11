@@ -33,7 +33,7 @@ export interface GeneralConfig {
 }
 
 const defaultConfig: GeneralConfig = {
-  cooperative_planning: true,
+  cooperative_planning: false,
   autonomous_execution: false,
   max_actions_per_step: 5,
   multiple_tools_per_call: false,

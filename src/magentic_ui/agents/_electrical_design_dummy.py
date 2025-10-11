@@ -49,107 +49,14 @@ from ._utils import notify_to_download
 from ..utils import thread_to_context
 
 from ..approval_guard import BaseApprovalGuard
-from ..guarded_action import ApprovalDeniedError, TrivialGuardedAction
-from ..tools.mcp import AggregateMcpWorkbench, NamedMcpServerParams
+from ..guarded_action import ApprovalDeniedError
+from ..tools.mcp import AggregateMcpWorkbench
 from ..docker_manager import DockerManager
 from autogen_core.tools import ToolSchema
 from ..teams.orchestrator._utils import extract_json_from_string
 # import logging
 # from autogen_agentchat import logger_NAME
 
-
-r'''
-def _extract_markdown_code_blocks(markdown_text: str) -> List[CodeBlock]:
-    pattern = re.compile(r"```(?:\s*([\w\+\-]+))?\n([\s\S]*?)```")
-    matches = pattern.findall(markdown_text)
-    code_blocks: List[CodeBlock] = []
-    for match in matches:
-        language = match[0].strip() if match[0] else ""
-        code_content = match[1]
-        code_blocks.append(CodeBlock(code=code_content, language=language))
-    return code_blocks
-
-
-async def _invoke_action_guard(
-    thread: Sequence[BaseChatMessage | BaseAgentEvent],
-    delta: Sequence[BaseChatMessage | BaseAgentEvent],
-    code_message: TextMessage,
-    agent_name: str,
-    model_client: ChatCompletionClient,
-    approval_guard: BaseApprovalGuard | None,
-) -> None:
-    # Get approval for the coding request. We could conceivably do extra work to enable interactive approval here,
-    # but the value for many users is likely to be low, as it may not be appropriate to assume knowledge of coding,
-    # and thus the user will not have the context necessary to approve/deny the incremental execution of code blocks.
-    guarded_action = TrivialGuardedAction("coding", baseline_override="maybe")
-
-    # Note that delta already contains the code message.
-    assert delta[-1] == code_message
-
-    thread = list(thread) + list(delta)
-
-    context = thread_to_context(
-        thread,
-        agent_name,
-        is_multimodal=model_client.model_info["vision"],
-    )
-    action_description_for_user = TextMessage(
-        content="Do you want to execute the code above?",
-        source=agent_name,
-    )
-
-    await guarded_action.invoke_with_approval(
-        {}, code_message, context, approval_guard, action_description_for_user
-    )
-'''
-
-'''
-async def _summarize_coding(
-    agent_name: str,
-    model_client: ChatCompletionClient,
-    thread: Sequence[BaseChatMessage | BaseAgentEvent],
-    cancellation_token: CancellationToken,
-    model_context: ChatCompletionContext,
-) -> TextMessage:
-    # Create a summary from the inner messages using an extra LLM call.
-    input_messages = (
-        [SystemMessage(content="你是一个会写代码和debug代码的智能体")]
-        + thread_to_context(
-            list(thread), agent_name, is_multimodal=model_client.model_info["vision"]
-        )
-        + [
-            UserMessage(
-                content="""
-                上述文本是你最初收到的请求和你的历史消息。
-                你需要为当前发生的所有的事情都生成一个总结概要，然后基于这些总结回答你收到的请求。
-                如果过程中有代码被执行，请复制最终没有错误的代码。
-                不要再赘述"你正在总结"，直接给出总结内容。""",
-                source="user",
-            )
-        ]
-    )
-
-    # Re-initialize model context to meet token limit quota
-    try:
-        await model_context.clear()
-        for msg in input_messages:
-            await model_context.add_message(msg)
-        token_limited_input_messages = await model_context.get_messages()
-    except Exception:
-        token_limited_input_messages = input_messages
-
-    summary_result = await model_client.create(
-        messages=token_limited_input_messages, cancellation_token=cancellation_token
-    )
-    assert isinstance(summary_result.content, str)
-    code_block_list = _extract_markdown_code_blocks(summary_result.content)
-    assert isinstance(summary_result.content, str)
-    return TextMessage(
-        source=agent_name,
-        metadata={"internal": "yes", "has_codeblocks": "yes" if len(code_block_list) == 0 else "no"},
-        content=summary_result.content,
-    )
-'''
 
 class CodingDelegatorAgentConfig(BaseModel):
     name: str
@@ -185,93 +92,16 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     component_provider_override = "magentic_ui.agents.CodingAgent"
     
     DEFAULT_DESCRIPTION = """
-    这是一个代码智能体。它可以解释代码、下载代码、写代码、优化代码、重构代码、修复代码问题(debug)或回答代码相关的问题等任何和代码有关的任务。
-    你可以同时指定代码的路经和代码文件，让此智能体将代码生成在指定路径中，或者在基于给定的代码文件内容进行修改代码、解释代码等操作。
-    请将任何代码相关的任务交给此智能体。
-    需要注意: 这个智能体只负责下载它生成的代码文件，不负责其他的下载任务。
+    这是一个电气设计智能体，在电气设计工作流程中发挥重要作用。它依据文字形式的电气设备需求，生成满足需求的电路拓扑图和对应的电路描述。
     """
 
     system_prompt_coding_agent_template = """
-    你是{name}, 一个代码智能体，但是你不会直接写代码，也不要写代码，你只是一个中间人，负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体(不需要你来执行传递消息的动作，你只要按要求处理好用户的输入并按要求输出即可)。
-    你要客观地分析用户的输入并提取相关的信息，然后将提取到的相关信息以JSON的格式输出。
-    你位于服务器端，用户是客户端。
-    用户也许会请求下载、保存文件(夹)，你没法直接把文件发送到用户所在客户端，但是你可以调用工具通知用户去下载服务器端上的这些文件或者文件夹。
+    你是{name}, 一个电气设计智能体，你专业于生成电路拓扑图和对应的电路描述。
 
     今天的日期是:{date_today}
     
-    ## 专业能力
-    ### 输入分析
-    对于用户的输入，首先考虑如下问题:
-    1. 用户的输入是否提出代码相关的请求，且包含代码的保存路径？ 如果是，你需要将代码的请求和用户要求的生成路径提取并且分开，但是不要篡改用户的请求。
-    2. 用户的输入是否提出代码相关的请求，但是不含代码的保存路径？ 如果是，这时你只需要一字不差地的转述用户的输入。
-    3. 用户的输入是否和代码请求无关，只是普通的交流或者回答问题？ 如果是，这时你只需要一字不差地的转述用户的输入。
-    4. 用户的请求是否是需要调用工具？ 比如使用下载工具下载代码。如果是，这时你需要将用户的请求转换为工具调用。
-    
-    * 第2和第3种情况的处理方法是一样，你只需要一字不差地的转述用户的输入。
-    
-    用户输入的例子：
-    - "帮我写一个Hello World的程序，并且保存在generate/test.py文件中" （代码请求，包含保存路径）
-    - "用python写一个贪吃蛇游戏" （代码请求，但不包含保存路径）
-    - "是的" (普通交流)
-    - "用python" (回答代码问题，但不是提出代码请求)
-    - "保存在/home/user/test.py文件中" (回答路径存储问题，但不是提出代码请求)
-    
-    ### 输出格式
-    对应不同类型的用户输入请求输出分为以下几种情况:
-    1. 对于[输入]中的第1，第2和第3种情况，你的输出要严格遵循以下JSON格式，且一定不要输出JSON格式以外的任何信息。
-    
-    ```json
-    {{
-        "request": "用户的请求",
-        "save_path": "用户指定的生成路径，如果用户没有指定，则取空字符串",
-    }}
-    ```
-    
-    2. 对于[输入]的第4种情况，你的输出没有特别要求，只要正常的调用对应的工具就行。    
-    
-    ## 例子
-    例子不会包含全部的情况，仅仅提供参考，你需要举一反三，根据上下文做出合适的判断。
-    
-    例子 1： 用户提出代码请求，你分析提取**代码请求**和**保存路径**，将**代码请求**和**保存路径**信息分开填入对应的JSON字段。
-    输入： 帮我写一个Hello World的程序，并且保存在generate/test.py文件中。 
-    输出：
-        ```json
-        {{
-            "request": "帮我写一个Hello World的程序",
-            "save_path": "generate/test.py"
-        }}
-        ```
-    
-    例子 2：用户提出了代码请求但是没有提到保存路径，`request`字段填入用户的请求，`save_path`字段取空字符串。
-    输入： 用python写一个贪吃蛇游戏。 
-    输出：
-        ```json
-        {{
-            "request": "用python写一个贪吃蛇游戏",
-            "save_path": ""
-        }}
-        ```
-        
-    例子 3：用户虽然提到了保存路径，但是这不是代码请求，可能是用户和另一个智能体的交流，你只需要一字不差地将用户的输入填入`request`字段，`save_path`字段取空字符串。
-    输入： 保存在/home/user/test.py文件中。 
-    输出：
-        ```json
-        {{
-            "request": "保存在/home/user/test.py文件中",
-            "save_path": ""
-        }}
-        ```
-      
-    ##  严格遵守的规则:
-    - 严格尊重用户的输入请求，不要篡改用户的请求，或者加入你的主观意见。
-    - 对于不用的输入类型，如果要求你输出JSON，则严格遵循[输出格式]规定的JSON格式，不要输出JSON格式以外的任何信息。
-    - **保存路径**只能填入`save_path`字段，且只能包含路径，不要有任何其他文字说明或者信息。如果用户的输入没有包含路径要求，`save_path`字段必须取空字符串:\"\"。
-    - **代码请求**只能填入`request`，且不要包含提取的**保存路径**信息。
-    
-    ### 重点注意:
-    - 你不会写代码，也不要写代码，你只负责处理用户的输入，你的输出将被传递给另一个真正会写代码的智能体。
-    - 你可以调用工具，调用工具不需要你输出JSON格式，只要正常调用工具就行。
-
+    ## 目的
+    在电气设计过程中，你运用生成式算法工具，将用户的文字需求转化为电路拓扑图和对应的电路描述。并保存为对应的文件。
     """
 
     def __init__(
@@ -298,7 +128,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
             model_client (ChatCompletionClient): The language model client to use.
             coding_tools: the NamedMcpServerParams specifying the coding provider MCP server.
             work_root (Path): Working root directory of this run session.
-            work_relative_dir (Path): Directory relative to {work_root} to save generated code files in the local filesystem. 
+            work_relative_dir (Path): Directory relative to {work_root} to save generated files in the local filesystem. 
             bind_root (Path): Working root directory of this run session inside Docker container.
             bind_relative_dir (Path): Relative directory to save generated code files inside Docker container.
             code_manager (CodeExecutor): It does not execute code curerently, 
@@ -853,6 +683,27 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """
         dict_res = await notify_to_download(str(self._work_root / self._work_relative_dir), file_and_directory_list, target_directory)
         return json.dumps(dict_res, ensure_ascii=False, indent=4)
+    
+    async def generate_circuit_diagram(
+        self,
+        circuit_requirments: Annotated[str, "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
+        ) -> str:
+        r"""
+        根据circuit_requirments的描述，生成电路拓扑图和对应的电路描述。
+        
+        参数:
+            circuit_requirments: 电路需求描述
+            
+        返回:
+            json: {
+                "available_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
+                "nonexist_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
+                "target_directory": target_directory
+            }
+        """
+        shutil.copy("circuit_diagram.png", self._work_root / self._work_relative_dir / "circuit_diagram.png")
+        
+        return "电路拓扑图和对应的电路描述已生成"
 
     def _to_config(self) -> CodingDelegatorAgentConfig:
         """Convert the agent's state to a configuration object."""

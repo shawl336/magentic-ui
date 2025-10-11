@@ -27,6 +27,16 @@ from .tools.playwright.browser import get_browser_resource_config
 from .types import RunPaths
 from .utils import get_internal_urls
 
+agent_class2name: Dict[Any, str] = {
+    ElectrialcalDocGenAgent: "documentation_analysis_and_generation_agent",
+    CodingDelegatorAgent: "coding_agent",
+    CoderAgent: "coder_agent",
+    FileSurfer: "file_surfer",
+    WebSurfer: "web_surfer",
+    McpAgent: "mcp_agent",
+    UserProxyAgent: "user_proxy",
+    ApprovalGuard: "approval_guard",
+}
 
 async def get_task_team(
     magentic_ui_config: Optional[MagenticUIConfig] = None,
@@ -116,7 +126,7 @@ async def get_task_team(
     if websurfer_model_client is None:
         websurfer_model_client = ModelClientConfigs.get_default_client_config()
     websurfer_config = WebSurferConfig(
-        name="web_surfer",
+        name=agent_class2name[WebSurfer],
         model_client=websurfer_model_client,
         browser=browser_resource_config,
         single_tab_mode=False,
@@ -150,7 +160,7 @@ async def get_task_team(
             magentic_ui_config.answer is not None
         ), "Answer must be provided for metadata user proxy"
         user_proxy = MetadataUserProxy(
-            name="user_proxy",
+            name=agent_class2name[UserProxyAgent],
             description="Metadata User Proxy Agent",
             task=magentic_ui_config.task,
             helpful_task_hints=magentic_ui_config.hints,
@@ -161,7 +171,7 @@ async def get_task_team(
         user_proxy_input_func = make_agentchat_input_func(input_func)
         user_proxy = UserProxyAgent(
             description=USER_PROXY_DESCRIPTION,
-            name="user_proxy",
+            name=agent_class2name[UserProxyAgent],
             input_func=user_proxy_input_func,
         )
 
@@ -208,7 +218,7 @@ async def get_task_team(
     file_surfer: FileSurfer | None = None
     if not magentic_ui_config.run_without_docker:
         coder_agent = CoderAgent(
-            name="coder_agent",
+            name=agent_class2name[CoderAgent],
             model_client=model_client_coder,
             work_dir=paths.internal_run_dir,
             bind_dir=paths.external_run_dir,
@@ -217,7 +227,7 @@ async def get_task_team(
         )
 
         file_surfer = FileSurfer(
-            name="file_surfer",
+            name=agent_class2name[FileSurfer],
             model_client=model_client_file_surfer,
             work_dir=paths.internal_run_dir,
             bind_dir=paths.external_run_dir,
@@ -238,7 +248,7 @@ async def get_task_team(
     coding_bind_relative_dir = Path(paths.run_suffix) # coding_bind_root + path.run_suffix
     
     coding_agent = CodingDelegatorAgent(
-        name="coding_agent",
+        name=agent_class2name[CodingDelegatorAgent],
         model_client=model_client_coder,
         coding_provider="gemini_cli",
         work_root=coding_work_root,
@@ -281,7 +291,7 @@ async def get_task_team(
     # add electridocgen agent
     # TODO: add electradocgen model_client
     electrical_gendoc = ElectrialcalDocGenAgent(
-        "electrical_gendoc",
+        agent_class2name[ElectrialcalDocGenAgent],
         model_client_file_surfer,
         work_dir=paths.internal_run_dir,
         bind_dir=paths.external_run_dir,

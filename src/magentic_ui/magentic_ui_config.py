@@ -69,7 +69,7 @@ class MagenticUIConfig(BaseModel):
     Attributes:
         model_client_configs (ModelClientConfigs): Configurations for the model client.
         mcp_agent_configs (List[McpAgentConfig], optional): Configs for AssistantAgents with access to MCP Servers.
-        cooperative_planning (bool): Enable co-planning mode (default: enabled), user will be involved in the planning process. Default: True.
+        cooperative_planning (bool): Enable co-planning mode (default: enabled), user will be involved in the planning process. Default: False.
         autonomous_execution (bool): Enable autonomous execution mode (default: disabled), user will not be involved in the execution. Default: False.
         allowed_websites (List[str], optional): List of websites that are permitted.
         max_actions_per_step (int): Maximum number of actions allowed per step. Default: 5.
@@ -101,7 +101,7 @@ class MagenticUIConfig(BaseModel):
 
     model_client_configs: ModelClientConfigs = Field(default_factory=ModelClientConfigs)
     mcp_agent_configs: List[McpAgentConfig] = Field(default_factory=lambda: [])
-    cooperative_planning: bool = True
+    cooperative_planning: bool = False
     autonomous_execution: bool = False
     allowed_websites: Optional[List[str]] = None
     max_actions_per_step: int = 5

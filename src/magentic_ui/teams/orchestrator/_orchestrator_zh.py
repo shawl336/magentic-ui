@@ -57,6 +57,7 @@ from ._prompts import (
     ORCHESTRATOR_FINAL_ANSWER_PROMPT,
     ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT,
     INSTRUCTION_AGENT_FORMAT,
+    PRESET_TASKS,
     validate_ledger_json,
     validate_plan_json,
 )
@@ -242,6 +243,7 @@ class Orchestrator(BaseGroupChatManager):
             ).format(
                 date_today=date_today,
                 team=self._team_description,
+                preset_tasks=PRESET_TASKS,
             )
         else:
             return get_orchestrator_system_message_planning(
@@ -249,6 +251,7 @@ class Orchestrator(BaseGroupChatManager):
             ).format(
                 date_today=date_today,
                 team=self._team_description,
+                preset_tasks=PRESET_TASKS,
             )
 
     def _get_task_ledger_plan_prompt(self, team: str) -> str:
@@ -930,7 +933,6 @@ class Orchestrator(BaseGroupChatManager):
         else:    
             # Is this the first step and a simple request needing no plans?
             if not plan_response['needs_plan'] or len(plan_response['steps']) < 1:
-                self._state.in_planning_mode = False
                 await self._publish_group_chat_message(
                     plan_response["response"], cancellation_token
                 )
@@ -938,7 +940,8 @@ class Orchestrator(BaseGroupChatManager):
                     self._user_agent_topic, cancellation_token
                     )
                 return
-        
+            
+            self._state.in_planning_mode = False
             await self._publish_group_chat_message(
                 dict_to_str(plan_response),
                 metadata={"internal": "no", "type": "plan_message"},

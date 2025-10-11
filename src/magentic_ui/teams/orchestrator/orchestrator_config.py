@@ -9,7 +9,7 @@ class OrchestratorConfig(BaseModel):
     Configuration class for Orchestrator.
 
     Attributes:
-        cooperative_planning (bool): Enable co-planning mode, requiring user-proxy feedback on plans. Default: True.
+        cooperative_planning (bool): Enable co-planning mode, requiring user-proxy feedback on plans. Default: False.
         autonomous_execution (bool): Enable autonomous execution mode; no human input is requested during execution. Default: False.
         allow_follow_up_input (bool): Flag to determine if new input should be requested after a final answer is given. Default: True.
         plan (Optional[Plan]): A pre-defined plan. In cooperative planning mode, the plan will be enhanced with user feedback.
@@ -30,7 +30,7 @@ class OrchestratorConfig(BaseModel):
         external_run_dir (Path, optional): The directory for the external run. i.e {external_root_dir}/{run_suffix}
     """
 
-    cooperative_planning: bool = True
+    cooperative_planning: bool = False
     autonomous_execution: bool = False
     allow_follow_up_input: bool = True
     plan: Optional[Plan] = None
