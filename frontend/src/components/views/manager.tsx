@@ -553,9 +553,9 @@ export const SessionManager: React.FC = () => {
               <Spin size="large" tip={"Loading..."} />
             </div>
           )}
-          <div className="text-sm text-primary mt-2 mb-2 text-center">
+          {/* <div className="text-sm text-primary mt-2 mb-2 text-center">
             {t("Agents can make mistakes. Please monitor its work and intervene if necessary.")}
-          </div>
+          </div> */}
         </div>
 
         <SessionEditor

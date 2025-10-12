@@ -11,7 +11,7 @@ PRESET_TASKS: str = """
         {
           "title": "电气设计需求提取与分析",
           "details": "提取和分析用户的电气设计需求，生成电气设计所必要的完整需求文档",
-          "agent_name": "documentation_analysis_and_generation_agent",
+          "agent_name": "electrical_requirement_validator",
         },
         {
           "title": "电路图生成",

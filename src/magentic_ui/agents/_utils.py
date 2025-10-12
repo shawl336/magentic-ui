@@ -47,7 +47,7 @@ async def exec_command_umask_patched(
 async def notify_to_download(
     run_dir: Annotated[str, "当前会话的所有文件的根目录"],
     file_and_directory_list: Annotated[List[str], "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
-    target_directory: Annotated[str | None, "用户指定的下载存放路径，是客户端上的路径，与服务端无关。如果没有给定下载则不要指定，如果给空字符串也等价于没有指定下载路径"]
+    target_directory: Annotated[str | None, "用户指定的下载存放路径，是客户端上的路径，与服务端无关。如果没有给定下载则不要指定，如果给空字符串也等价于没有指定下载路径"] = None
     ) -> Dict[str, Any]:
     r"""
     通知用户(客户端)下载file_and_directory_list列表中给定的文件和文件夹。target_directory是用户(客户端)上的下载保存路径，如果用户指定了则为用户指定的路径，否则为空字符串。

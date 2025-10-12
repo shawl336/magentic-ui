@@ -155,8 +155,7 @@ class CodingDelegatorAgentConfig(BaseModel):
     name: str
     run_id: int
     model_client: ComponentModel
-    description: str = """
-    """
+    description: str = ""
     max_reties: int = 3
     summarize_output: bool = False
     coding_provider: str
@@ -482,7 +481,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 workbench=self._coding_workbench, # type: ignore
                 max_json_retries=self._max_reties,
                 cancellation_token=code_execution_token,
-                model_context=self._model_context,
             ):
             # Display some messages to the UI by setting event.metadata = {"internal": False}
                 
@@ -572,7 +570,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         bind_relative_dir: Path,
         max_json_retries: int,
         cancellation_token: CancellationToken,
-        model_context: ChatCompletionContext,
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage, None]:
         """Write code using the model and executor.
 
@@ -613,10 +610,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
 
         # Re-initialize model context to meet token limit quota
         try:
-            await model_context.clear()
+            await self._model_context.clear()
             for msg in delegator_context:
-                await model_context.add_message(msg)
-            token_limited_context = await model_context.get_messages()
+                await self._model_context.add_message(msg)
+            token_limited_context = await self._model_context.get_messages()
         except Exception:
             token_limited_context = delegator_context
         
@@ -647,10 +644,10 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         try:
             while retries < max_json_retries:
                 if exception_message:
-                    await model_context.add_message(
+                    await self._model_context.add_message(
                         UserMessage(content=exception_message, source=agent_name)
                     )
-                token_limited_context = await model_context.get_messages()
+                token_limited_context = await self._model_context.get_messages()
                 delegated_result = await model_client.create(
                     token_limited_context,
                     json_output=True
@@ -665,6 +662,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                     await self._model_context.add_message(AssistantMessage(content=delegated_result.content, source=self._name))
                     tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in delegated_result.content])
                     
+                    token_limited_context = await self._model_context.get_messages()
                     delegated_result = await self._model_client.create(
                         token_limited_context,
                         json_output=True
@@ -684,6 +682,7 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                             metadata={"type": "auto_download_file"},
                         )   
                     
+                    token_limited_context = await self._model_context.get_messages()
                     delegated_result = await self._model_client.create(
                         token_limited_context,
                         json_output=True
