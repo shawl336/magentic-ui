@@ -724,7 +724,7 @@ class Orchestrator(BaseGroupChatManager):
         """ Preprocess the user request, and check if it matches a preset task
             Ensures:
             1. All required fields are present
-            2. `task` and `steps` fileds are non empty if `request_type` == 'Preset'
+            2. `name` and `steps` fileds are non empty if `request_type` == 'Preset'
             3. `is_preset` will be a True object if `request_type` == 'Preset'
             
             Otherwise, return the raw response, `preset_plan` is not a Plan object
@@ -740,7 +740,7 @@ class Orchestrator(BaseGroupChatManager):
             
             # Can this request be solve by a preset plan?
             if response.get("request_type", "").lower() == "preset":
-                plan = Plan.from_list_of_dicts_or_str(response["preset_plan"])
+                plan = Plan.from_list_of_dicts_or_str(response)
                 if plan:
                     plan.is_preset = True
                 else:
@@ -797,12 +797,15 @@ class Orchestrator(BaseGroupChatManager):
             if preprocess_response and isinstance(preprocess_response["preset_plan"], Plan):
                 self._state.plan = preprocess_response["preset_plan"]
                 self._state.plan_str = str(self._state.plan)
+                if not self._config.no_overwrite_of_task:
+                    self._state.task = preprocess_response["task"]
+                # add plan_response to the message thread
                 self._state.message_history.append(
                     TextMessage(
-                        content="预设的工作计划:\n " + str(self._state.plan),
-                        source=self._name,
+                        content="匹配到预设的工作计划:\n " + json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
                     )
                 )
+
                 plan_response = {
                     "task": self._state.plan.task,
                     "steps": [step.model_dump() for step in self._state.plan.steps],
@@ -835,8 +838,8 @@ class Orchestrator(BaseGroupChatManager):
                 self._state.plan_str = str(self._config.plan)
                 self._state.message_history.append(
                     TextMessage(
-                        content="用户提供的初始计划:\n " + str(self._config.plan),
-                        source="user",
+                        content=json.dumps(plan_response, ensure_ascii=False, indent=4),
+                        source=self._name
                     )
                 )
                 plan_response = {
@@ -1078,6 +1081,8 @@ class Orchestrator(BaseGroupChatManager):
         context = self._thread_to_context()
         # Update the progress ledger
 
+        # The progress ledger prompt is not part of message_history, 
+        # it keeps the plan progress and is changing at every step
         progress_ledger_prompt = self._get_progress_ledger_prompt(
             self._state.task,
             self._state.plan_str,

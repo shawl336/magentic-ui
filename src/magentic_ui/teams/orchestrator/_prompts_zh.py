@@ -84,8 +84,8 @@ def get_orchestrator_system_message_intent_preprocess() -> str:
         - 如果回答是肯的，应该纠正这些错误。
         - 如果回答是否定的，不要对用户的请求进行任何，一字不差的保留期原始请求。
     2. 用户的请求是否匹配预设的固定计划？
-        - 如果回答是肯定的，输出对应的计划名称，输出的`request_type`字段必须设置为'Preset'，输出的`preset_plan`字段必须包含对应的计划名称(`name`)和计划步骤(`steps`)。
-        - 如果回答是否定的，输出的`request_type`字段必须设置为'other'，输出的`preset_plan`字段必须设置为'None'。'None'作为一个特殊的计划名称，表示用户的请求不匹配任何预设的计划。
+        - 如果回答是肯定的，输出对应的计划名称，输出的`request_type`字段必须设置为'Preset'，输出必须包含对应的计划名称(`preset_plan`)和计划步骤(`steps`)。
+        - 如果回答是否定的，输出的`request_type`字段必须设置为'other'，输出的`preset_plan`字段必须设置为'None'， `steps`字段必须设置为空数组。'None'作为一个特殊的计划名称，表示用户的请求不匹配任何预设的计划。
     
     **注意事项**:
     - 纠正用户请求的文字错误要保持原始的意图一致，一定不能改变用户的意图！
@@ -109,19 +109,17 @@ def get_orchestrator_system_message_intent_preprocess() -> str:
     
     ```json
     {{
-        "user_request": "纠正后的用户请求或者原本的用户请求",
+        "task": "纠正后的用户请求或者原本的用户请求",
         "request_type": "用户请求的类型，必须设置为'Preset'或者'None'",
-        "preset_plan": {{
-            "task": "计划的名称",
-            "steps": [
-                {{
-                    "title": "步骤标题",
-                    "details": "步骤详情",
-                    "agent_name": "执行此步骤的智能体(agent)的名称"
-                }},
-                ...
-            ]
-            }}
+        "preset_plan": "计划的名称",
+        "steps": [
+            {{
+                "title": "步骤标题",
+                "details": "步骤详情",
+                "agent_name": "执行此步骤的智能体(agent)的名称"
+            }},
+            ...
+        ]
     }}
     ```
     
@@ -1217,33 +1215,30 @@ def validate_preprocess_json(json_response: Dict[str, Any]) -> bool:
     """Validate preprocess JSON response."""
     if not isinstance(json_response, dict):
         return False
-    required_keys = ["user_request", "request_type", "preset_plan"]
+    required_keys = ["task", "request_type", "preset_plan", "steps"]
     for key in required_keys:
         if key not in json_response:
             return False
     
     # Does a preset plan matched?
     if json_response["request_type"].lower() == "preset":
-        if "task" not in json_response["preset_plan"] or not json_response["preset_plan"]["task"]:
-            return False
-
         # Does the preset plan have more than 1 step and have required fields?
-        if "steps" not in json_response["preset_plan"]:
+        if json_response["preset_plan"] == "None":
             return False
-        else:
-            steps = json_response["preset_plan"]["steps"]
-            if len(steps) == 0:
-                return False
             
-            for item in steps:
-                if not isinstance(item, dict):
-                    return False  
-                  
-                if (
-                    "title" not in item
-                    or "details" not in item
-                    or "agent_name" not in item
-                ):      
-                    return False 
+        steps = json_response["steps"]
+        if len(steps) == 0:
+            return False
+        
+        for item in steps:
+            if not isinstance(item, dict):
+                return False  
+                
+            if (
+                "title" not in item
+                or "details" not in item
+                or "agent_name" not in item
+            ):      
+                return False 
     
     return True
