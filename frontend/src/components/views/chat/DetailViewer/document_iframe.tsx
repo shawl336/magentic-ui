@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef, useContext } from "react";
 import { useTranslation } from "react-i18next";
+import { appContext } from "../../../../hooks/provider";
 
 interface DocumentIframeProps {
   docUrl?: string;
@@ -13,96 +14,91 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const { user } = useContext(appContext);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
-  console.log(docUrl);
-  React.useEffect(() => {
-    let isCancelled = false;
-    const renderDocx = async () => {
-      if (!docUrl || !containerRef.current) return;
-      setLoading(true);
-      setError(null);
+
+  useEffect(() => {
+    if (!docUrl || !containerRef.current) return;
+
+    setLoading(true);
+    setError(null);
+
+    // 转换URL为OnlyOffice可访问的格式
+    let apiPath = docUrl;
+    if (docUrl.startsWith('/files/')) {
+      apiPath = docUrl.substring('/files/'.length);
+    } else if (docUrl.startsWith('files/')) {
+      apiPath = docUrl.substring('files/'.length);
+    } else if (docUrl.startsWith('/') && !docUrl.startsWith('//')) {
+      apiPath = docUrl.startsWith('/') ? docUrl.substring(1) : docUrl;
+    }
+
+    // 通过前端proxy提供文档 - 使用宿主机IP，这样OnlyOffice容器能访问
+    const documentUrl = `http://172.17.0.1:8000/api/document/${apiPath}`;
+    const documentKey = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 动态加载OnlyOffice API
+    const loadOnlyOfficeAPI = () => {
+      return new Promise<void>((resolve, reject) => {
+        if ((window as any).DocsAPI) {
+          resolve();
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'http://172.17.0.2/web-apps/apps/api/documents/api.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load OnlyOffice API'));
+        document.head.appendChild(script);
+      });
+    };
+
+    // 初始化OnlyOffice编辑器
+    const initEditor = async () => {
       try {
-        const response = await fetch(docUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch document: ${response.status}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        if (isCancelled) return;
+        await loadOnlyOfficeAPI();
 
-        const mod: any = await import("docx-preview");
-        const docx = mod.default || mod;
+        const config = {
+          document: {
+            fileType: 'docx',
+            key: documentKey,
+            title: 'Document',
+            url: documentUrl,
+          },
+          documentType: 'word',
+          editorConfig: {
+            mode: 'view',
+            lang: 'zh-CN',
+            callbackUrl: 'http://172.17.0.1:8081/api/callback',
+            user: {
+              id: user?.email || 'guestuser@gmail.com',
+              name: user?.email?.split('@')[0] || 'guestuser',
+            },
+          },
+          height: '100%',
+          width: '100%',
+        };
 
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
-        }
+        if ((window as any).DocsAPI && containerRef.current) {
+          // 清除容器内容
+          containerRef.current.innerHTML = '';
 
-        await docx.renderAsync(arrayBuffer, containerRef.current, undefined, {
-          className: "docx-preview",
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          breakPages: true,
-        });
-      } catch (e: any) {
-        if (!isCancelled) {
-          setError(e?.message || "Failed to render document");
+          // 创建编辑器
+          const docEditor = new (window as any).DocsAPI.DocEditor('onlyoffice-editor', config);
+          console.log('OnlyOffice editor initialized:', docEditor);
+          setLoading(false);
         }
-      } finally {
-        if (!isCancelled) setLoading(false);
+      } catch (err) {
+        console.error('Failed to initialize OnlyOffice editor:', err);
+        setError('Failed to load document viewer');
+        setLoading(false);
       }
     };
 
-    renderDocx();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [docUrl]);
-
-  // Intercept anchor clicks within rendered DOCX to avoid full page refresh and jump within preview
-  React.useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target) return;
-      const anchor = target.closest('a') as HTMLAnchorElement | null;
-      if (!anchor) return;
-
-      const href = anchor.getAttribute('href') || '';
-      // Only handle in-document hash links
-      if (href.startsWith('#')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const rawId = href.slice(1);
-        const id = decodeURIComponent(rawId);
-        // Find target within the container
-        let targetEl: HTMLElement | null = null;
-        // Try by id first
-        targetEl = container.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
-        // Fallback: some generators use name attribute
-        if (!targetEl) {
-          targetEl = container.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null;
-        }
-
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      } else if (anchor.target !== '_blank' && /^(https?:)?\/\//.test(href)) {
-        // For external links, open in new tab to avoid navigating the app
-        e.preventDefault();
-        window.open(anchor.href, '_blank', 'noopener,noreferrer');
-      }
-    };
-
-    container.addEventListener('click', handleClick, true);
-    return () => {
-      container.removeEventListener('click', handleClick, true);
-    };
-  }, [containerRef.current]);
+    initEditor();
+  }, [docUrl, t]);
 
   if (!docUrl) {
     return (
@@ -125,9 +121,10 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
         </div>
       )}
       <div
+        id="onlyoffice-editor"
         ref={containerRef}
-        className="flex-1 w-full overflow-auto bg-white"
-        style={{ contain: "content" }}
+        className="flex-1 w-full h-full bg-white"
+        style={{ minHeight: "400px" }}
       />
     </div>
   );

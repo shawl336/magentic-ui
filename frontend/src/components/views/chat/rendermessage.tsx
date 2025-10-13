@@ -781,7 +781,7 @@ export const RenderMessage: React.FC<MessageProps> = memo(
               ) : (
                 <div className="break-words">
                   {message.metadata?.type === "file" ? (
-                    <RenderFile message={message} />
+                    <RenderFile message={message} sessionId={sessionId} />
                   ) : (
                     <MarkdownRenderer
                       content={String(parsedContent.text)}

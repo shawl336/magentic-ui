@@ -107,8 +107,16 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
   };
 
   const getUrlFileName = (url: string) => {
-    const pathName = new URL(url).pathname;
-    return pathName.substring(pathName.lastIndexOf('/') + 1);
+    try {
+      const pathName = new URL(url).pathname;
+      const fileName = pathName.substring(pathName.lastIndexOf('/') + 1);
+      // 解码URL编码的文件名
+      return decodeURIComponent(fileName);
+    } catch (e) {
+      // 如果URL解析失败，直接从字符串中提取
+      const parts = url.split('/');
+      return decodeURIComponent(parts[parts.length - 1] || 'Document');
+    }
   }
 
   // React to docUrl presence to switch modes
@@ -208,8 +216,8 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
 
   const renderDocTab = React.useMemo(() => {
     if (viewMode != "doc")
-      return;
-    
+      return null;
+
     if (!docUrl) {
       return (
         <div className="flex-1 w-full h-full min-h-0 flex items-center justify-center">
@@ -217,7 +225,7 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
         </div>
       );
     }
-    
+
     return <DocumentIframe docUrl={docUrl} />;
   }, [docUrl, viewMode]);
 
