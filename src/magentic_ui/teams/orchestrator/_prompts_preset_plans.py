@@ -3,10 +3,10 @@ Workflows must contain a `description` and `steps`.
 Steps must contain a `title`, `details`, and an optional `agent_name`.
 If an agent_name is not provided, the step will be executed by the default agent, otherwise the orchestrator will try to delegate an agent from the team.
 """
-PRESET_TASKS: str = """
+PRESET_PLANS: str = """
 {
-  "电气设计工作流程": {
-    "description": "电气设计工作流程对应的是变压器，变流器等电气设备的设计。包含了电气设计需求提取与分析，电路图生成，人工审查电路图，计算电气参数，电气物料选型，人工仿真等步骤。",
+  "电气设计工作计划": {
+    "description": "电气设计工作计划对应的是变压器，变流器等电气设备的设计。包含了电气设计需求提取与分析，电路图生成，人工审查电路图，计算电气参数，电气物料选型，人工仿真等步骤。",
     "steps": [
         {
           "title": "电气设计需求提取与分析",

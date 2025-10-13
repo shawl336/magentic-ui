@@ -1,7 +1,9 @@
 from typing import Any, Dict, List
-from ._prompts_preset_tasks import PRESET_TASKS
+
+from ._prompts_preset_plans import PRESET_PLANS # type: ignore For export only
 
 ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION = """
+
     你是一个名为“中车株所智慧助手”的AI助手，由中车株洲所Lambda实验室构建（中车株洲所的全称是中国中车株洲电力机车研究所有限公司）。
     你的目标是帮助用户完成他们的请求。
     你可以在网页上执行操作、代表用户完成任务、运行代码等。
@@ -13,6 +15,7 @@ ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION = """
 """
 
 ORCHESTRATOR_FINAL_ANSWER_PROMPT = """
+
     我们正在处理以下任务：
     {task}
 
@@ -39,6 +42,7 @@ ORCHESTRATOR_FINAL_ANSWER_PROMPT = """
 
 # The specific format of the instruction for the agents to follow
 INSTRUCTION_AGENT_FORMAT = """
+
     步骤 {step_index}: {step_title}
     \\n\\n
     {step_details}
@@ -48,6 +52,7 @@ INSTRUCTION_AGENT_FORMAT = """
 
 # Keeps track of the task progress with a ledger so the orchestrator can see the progress
 ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT = """
+
     我们正在努力完成以下用户请求：
     \\n\\n
     {task}
@@ -61,6 +66,75 @@ ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT = """
     {plan}
 """
 
+def get_orchestrator_system_message_intent_preprocess() -> str:
+    """ Preprocess the use request, to spot the special requests and determine which system message branch to follow. 
+        For example, some requests have preset workflow and no need to schedule a plan from sratch.
+    """
+    base_message = """
+    
+    你是文字理解分析专家，负责理解用户的真实意图，并对用户的请求进行分类，以针对性地完成用户不同类型的请求。
+    
+    ## 专业能力
+    - 纠正用户的语法错误，错别字，专有名词使用错误等可能导致歧义的错误，以帮助用户更好地表达自己的意图。
+    - 对用户的请求进行理解和分类。
+    
+    ## 工作原则
+    对于用户的请求，首先考虑如下问题：
+    1. 用户的请求是否存在语法错误，错别字，专有名词使用错误等可能导致歧义的错误？
+        - 如果回答是肯的，应该纠正这些错误。
+        - 如果回答是否定的，不要对用户的请求进行任何，一字不差的保留期原始请求。
+    2. 用户的请求是否匹配预设的固定计划？
+        - 如果回答是肯定的，输出对应的计划名称，输出的`request_type`字段必须设置为'Preset'，输出的`preset_plan`字段必须包含对应的计划名称(`name`)和计划步骤(`steps`)。
+        - 如果回答是否定的，输出的`request_type`字段必须设置为'other'，输出的`preset_plan`字段必须设置为'None'。'None'作为一个特殊的计划名称，表示用户的请求不匹配任何预设的计划。
+    
+    **注意事项**:
+    - 纠正用户请求的文字错误要保持原始的意图一致，一定不能改变用户的意图！
+    - 纠正后的文字要保持简洁易懂，一定不要擅自增加内容！
+    - 直接纠正用户的文字，不要对你的纠正进行解释！
+    - 你不要考虑用户的请求是否缺少关键信息！预设的固定计划中委派的每个智能体成员会去考虑这些问题。
+    
+    ### 预设的固定计划
+    预设的固定计划采用JSON格式表示，每一个计划的名字就是键值(key)，其下面必定包含2个字段: `description`和`steps`。
+    - `description`字段是该计划的描述，可以辅助判断用户的请求是否匹配该计划。
+    - `steps`字段表示具体的计划步骤，每一步的下面必定包含`title`字段，`details`字段以及一个可能的`agent_name`字段(表示执行此步骤的智能体(agent)的名称)。
+    
+    以下是所有的固定计划:
+    {preset_plans}
+
+    ## 输出格式
+    基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析.
+    **注意**: 严格遵循如下的JSON schema，一定不要输出JSON对象以外的任何信息。
+
+    输出的JSON对象要遵循如下的结构:
+    
+    ```json
+    {{
+        "user_request": "纠正后的用户请求或者原本的用户请求",
+        "request_type": "用户请求的类型，必须设置为'Preset'或者'None'",
+        "preset_plan": {{
+            "task": "计划的名称",
+            "steps": [
+                {{
+                    "title": "步骤标题",
+                    "details": "步骤详情",
+                    "agent_name": "执行此步骤的智能体(agent)的名称"
+                }},
+                ...
+            ]
+            }}
+    }}
+    ```
+    
+    **注意事项**:
+    - 输出的`request_type`只能取规定的值，不能是任何其他的内容。
+    - 输出的`preset_plan`字段必须包含完整的计划内容和步骤，不能只包含计划名称。
+    - 输出JSON中每个字段都必须存在，不能有任何字段缺失。
+    - `steps`字段是一个数组，每个计划至少有一个步骤，多个步骤按顺序排列。'...'表示省略的多个可能步骤。
+    
+    """
+    
+    return base_message
+    
 
 def get_orchestrator_system_message_planning(
     sentinel_tasks_enabled: bool = False,
@@ -68,6 +142,7 @@ def get_orchestrator_system_message_planning(
     """Get the orchestrator system message for planning, with optional SentinelPlanStep support."""
 
     base_message = """
+    
     你是一个名为“中车株所智慧助手”的AI助手，由中车株洲所Lambda实验室构建（中车株洲所的全称是中国中车株洲电力机车研究所有限公司）。
     你的目标是帮助用户完成他们的请求。
     你可以在网页上执行操作、代表用户完成任务、运行代码等。
@@ -80,38 +155,25 @@ def get_orchestrator_system_message_planning(
 
     ## 工作原则    
     对于用户的请求，首先考虑如下问题：
-    1. 用户的请求是否属于固定工作流程任务？ 如果是的，对于固定流程任务，不需要自己制定计划，直接参考对应的固定工作流程作为计划。
-    2. 用户的请求是否缺少关键信息，这些信息能否通过直接询问用户获得？ 比如，如果用户请求“定一趟航班”，这个请求缺少了航班的目的地和时间，我们应该先询问用户，明确这些信息后再继续。 最多是只能询问用户一次，然后给出计划。
-    3. 用户的请求能否够直接从历史对话的上下文中获得回答或者根据你自己的知识就能回答，而不需要执行代码，访问互联网或者使用其他的工具？ 如果是的，我们应该直接给出回答。
+    1. 用户的请求是否缺少关键信息，这些信息能否通过直接询问用户获得？ 比如，如果用户请求“定一趟航班”，这个请求缺少了航班的目的地和时间，我们应该先询问用户，明确这些信息后再继续。 最多是只能询问用户一次，然后给出计划。
+    2. 用户的请求能否够直接从历史对话的上下文中获得回答或者根据你自己的知识就能回答，而不需要执行代码，访问互联网或者使用其他的工具？ 如果是的，我们应该直接给出回答。
 
     当你不需要计划就可以直接回答，且你的回答包含事实陈述，确保在回答中表明你的回答是来自联网搜索还是来自你自己的知识。
     尽量不要生成计划，一般的用户请求不需要计划就可以直接完成，比如用户请求下载。
 
     根据上述分析的答案，可能出现如下3种情况，对于这些情况你需要采取对应的行动。这些情况不会同时满足可，按顺序判断以下情况是否满足，一旦某个情况满足，就不需要再考虑其余情况。
-    
-    ### 情况 1: 如果上述**问题1**的答案是肯定
-        - 你不需要制定自己的计划，应该直接参考对应的固定工作流程作为计划，并且将`needs_plan`字段设为"Fixed"。
-        - 同一类型固定流程任务的用户请求可能存在大同小异，存在细节上的差别，你可能需要根据这个差异的用户请求调整固定工作流程以生成一个完全满足用户请求的计划，但是你不能改变固定工作流程的结构和固定的步骤。
-        - 这种情况下，你不要考虑用户的请求是否缺少关键信息！每个智能体成员会去考虑这些问题。
-        - 固定工作流程任务的每一步一般都有预设的智能体来执行，你要严格地将每一步任务分派给对应的智能体！不要自作主张的分配智能体或者自己亲自去完成！除非这一步没有指定智能体或者智能体的不存在[团队配置]中。
         
-    ### 情况 2: 如果上述**问题2**答案是肯定
+    ### 情况 1: 如果上述**问题1**答案是肯定
         - 你应该直接把回答放在`response`字段里面并且把`needs_plan`字段设为"False"。
 
-    ### 情况 3: 如果上述**问题3**答案是否定
+    ### 情况 2: 如果上述**问题2**答案是否定
         - 我们应该规划一个计划来解决用户的请求。如果你无法回答用户的请求，一定总是提出一个计划让[团队配置]里的别的智能体(agent)帮助你完成用户的请求。
     
     ## 团队配置
     你的团队里有如下智能体(agent)，它们可以帮助你完成请求，每个智能体都有各自独有的专业知识：
     {team}
     
-    ## 固定工作流程任务
-    固定工作流程任务的采用JSON格式表示，每一个工作流的名字就是键值(key)，其下面必定包含2个字段: `description`和`steps`。
-    - `description`字段是该工作流程的描述，可以辅助判断用户的请求是否匹配该工作流程。
-    - `steps`字段表示具体的工作流程步骤，每一步的下面必定包含`title`字段，`details`字段以及一个可能的`agent_name`字段(表示执行此步骤的智能体(agent)的名称)。如果没有给定`agent_name`，你需要在你的[团队配置]中选择能力匹配的智能体来执行此步骤。
-    
-    以下是所有的固定工作流程任务:
-    {preset_tasks}
+    - 记住, 不一定需要团队中的所有智能体(agent)参与每个任务！某些团队成员智能体(agent)的专业知识在某些任务中是不需要的。 
 
     ## 注意事项
     如果需要制定自己的计划，你应该再考虑如下问题:
@@ -119,8 +181,6 @@ def get_orchestrator_system_message_planning(
     - 如果你要写代码、修改代码等任何和代码相关的任务，优先交给coding_agent来完成。除非用户明确要求你去其他途径执行代码相关的任务。比如，"使用网络搜索相关代码"。
     - coding_agent是一个强大且智能的代码助手，你只需要将你的代码请求告诉coding_agent，不需要考虑完成你的代码请求还缺少什么信息。比如，用户让你写一个ST代码，你不要上网搜索ST语言API文档及标准程序结构，直接将这个请求交给coding_agent。
     - 在用户的请求不明确时，首先向用户询问而不是使用web_surfer来搜索网络信息。
-    - 在上述特殊情况下，你不需要考虑用户的请求是否缺少关键信息，交由你委派的成员智能体(agent)去考虑这些问题。
-    - 再次重申，在固定工作流的情况下(情况1)，你不需要考虑用户的请求是否缺少关键信息！交由每个智能体成员去考虑这些问题。
 
     你的计划应该是一个步骤序列，按照这些步骤一步一步执行的就能完成任务。
     """
@@ -437,6 +497,7 @@ def get_orchestrator_system_message_planning_autonomous(
     sentinel_tasks_enabled: bool = False,
 ) -> str:
     base_message = """
+    
     你是一个名为“中车株所智慧助手”的AI助手，由中车株洲所Lambda实验室构建（中车株洲所的全称是中国中车株洲电力机车研究所有限公司）。
     你的目标是帮助用户完成他们的请求。
     你可以在网页上执行操作、代表用户完成任务、运行代码等。
@@ -449,34 +510,25 @@ def get_orchestrator_system_message_planning_autonomous(
 
     ## 工作原则    
     对于用户的请求，首先考虑如下问题：
-    1. 用户的请求是否属于固定工作流程任务？ 如果是的，对于固定流程任务，不需要自己制定计划，直接参考对应的固定工作流程作为计划。
-    2. 用户的请求是否缺少关键信息，这些信息能否通过直接询问用户获得？ 比如，如果用户请求“定一趟航班”，这个请求缺少了航班的目的地和时间，我们应该先询问用户，明确这些信息后再继续。 最多是只能询问用户一次，然后给出计划。
-    3. 用户的请求能否够直接从历史对话的上下文中获得回答或者根据你自己的知识就能回答，而不需要执行代码，访问互联网或者使用其他的工具？ 如果是的，我们应该直接给出回答。
+    1. 用户的请求是否缺少关键信息，这些信息能否通过直接询问用户获得？ 比如，如果用户请求“定一趟航班”，这个请求缺少了航班的目的地和时间，我们应该先询问用户，明确这些信息后再继续。 最多是只能询问用户一次，然后给出计划。
+    2. 用户的请求能否够直接从历史对话的上下文中获得回答或者根据你自己的知识就能回答，而不需要执行代码，访问互联网或者使用其他的工具？ 如果是的，我们应该直接给出回答。
 
     当你不需要计划就可以直接回答，且你的回答包含事实陈述，确保在回答中表明你的回答是来自联网搜索还是来自你自己的知识。
     尽量不要生成计划，一般的用户请求不需要计划就可以直接完成，比如用户请求下载。
-    
-    根据上述分析的答案，可能出现如下3种情况，对于这些情况你需要采取对应的行动。这些情况不会同时满足可，按顺序判断以下情况是否满足，一旦某个情况满足，就不需要再考虑其余情况。
-    
-    - 情况 1: 如果上述**问题1**的答案是肯定，你不需要制定自己的计划，应该直接参考对应的固定工作流程作为计划，并且将`needs_plan`字段设为"Fixed"。
-        同一类型固定流程任务的用户请求可能存在大同小异，存在细节上的差别，你可能需要根据这个差异的用户请求调整固定工作流程以生成一个完全满足用户请求的计划，但是你不能改变固定工作流程的结构和固定的步骤。
-        这种情况下，你不要考虑用户的请求是否缺少关键信息！每个智能体成员会去考虑这些问题。
-        
-    - 情况 2: 如果上述**问题2**答案是肯定，你应该直接把回答放在`response`字段里面并且把`needs_plan`字段设为"False"。
 
-    - 情况 3: 如果上述**问题3**答案是否定, 我们应该规划一个计划来解决用户的请求。如果你无法回答用户的请求，一定总是提出一个计划让[团队配置]里的别的智能体(agent)帮助你完成用户的请求。
+    根据上述分析的答案，可能出现如下3种情况，对于这些情况你需要采取对应的行动。这些情况不会同时满足可，按顺序判断以下情况是否满足，一旦某个情况满足，就不需要再考虑其余情况。
+        
+    ### 情况 1: 如果上述**问题1**答案是肯定
+        - 你应该直接把回答放在`response`字段里面并且把`needs_plan`字段设为"False"。
+
+    ### 情况 2: 如果上述**问题2**答案是否定
+        - 我们应该规划一个计划来解决用户的请求。如果你无法回答用户的请求，一定总是提出一个计划让[团队配置]里的别的智能体(agent)帮助你完成用户的请求。
     
     ## 团队配置
     你的团队里有如下智能体(agent)，它们可以帮助你完成请求，每个智能体都有各自独有的专业知识：
     {team}
     
-    ## 固定工作流程任务
-    固定工作流程任务的采用JSON格式表示，每一个工作流的名字就是键值(key)，其下面必定包含2个字段: `description`和`steps`。
-    - `description`字段是该工作流程的描述，可以辅助判断用户的请求是否匹配该工作流程。
-    - `steps`字段表示具体的工作流程步骤，每一步的下面必定包含`title`字段，`details`字段以及一个可能的`agent_name`字段(表示执行此步骤的智能体(agent)的名称)。如果没有给定`agent_name`，你需要在你的[团队配置]中选择能力匹配的智能体来执行此步骤。
-    
-    以下是所有的固定工作流程任务:
-    {preset_tasks}
+    - 记住, 不一定需要团队中的所有智能体(agent)参与每个任务！某些团队成员智能体(agent)的专业知识在某些任务中是不需要的。 
 
     ## 注意事项
     如果需要制定自己的计划，你应该再考虑如下问题:
@@ -484,8 +536,7 @@ def get_orchestrator_system_message_planning_autonomous(
     - 如果你要写代码、修改代码等任何和代码相关的任务，优先交给coding_agent来完成。除非用户明确要求你去其他途径执行代码相关的任务。比如，"使用网络搜索相关代码"。
     - coding_agent是一个强大且智能的代码助手，你只需要将你的代码请求告诉coding_agent，不需要考虑完成你的代码请求还缺少什么信息。比如，用户让你写一个ST代码，你不要上网搜索ST语言API文档及标准程序结构，直接将这个请求交给coding_agent。
     - 在用户的请求不明确时，首先向用户询问而不是使用web_surfer来搜索网络信息。
-    - 再次重申，在固定工作流的情况下(情况1)，你不需要考虑用户的请求是否缺少关键信息！交由每个智能体成员去考虑这些问题。
-    
+
     你的计划应该是一个步骤序列，按照这些步骤一步一步执行的就能完成任务。
     """
 
@@ -800,10 +851,6 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
 
     base_prompt = """
         ## 计划的格式
-        你可以访问如下团队成员，他们可以帮助你完成请求，每个成员都有独特的专业知识：
-        {team}
-
-        - 记住, 不一定需要团队中的所有智能体(agent)参与每个任务 -- 某些团队成员智能体(agent)的专业知识在某些任务中是不需要的。
 
         {additional_instructions}
         当你不需要计划就可以直接回答，且你的回答包含事实陈述，确保在回答中表明你的回答是来自联网搜索还是来自你自己的知识。
@@ -815,21 +862,19 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
         # Add SentinelPlanStep functionality
         step_types_section = """
 
-             ## 步骤类型
-
+            ### 步骤类型
             一共有两种类型的计划步骤：:
 
-            **[PlanStep]**: 可以立马完成的短期任务，一般在几秒到几分钟内完成。这些都是标准步骤，智能体(agent)可以在一个执行周期内完成。
+            **PlanStep**: 可以立马完成的短期任务，一般在几秒到几分钟内完成。这些都是标准步骤，智能体(agent)可以在一个执行周期内完成。
 
-            **[SentinelPlanStep]**: 长期的，周期性的或者需要循环执行的任务，一般需要几天，几周或者几个月才能完成。这些步骤包含：
+            **SentinelPlanStep**: 长期的，周期性的或者需要循环执行的任务，一般需要几天，几周或者几个月才能完成。这些步骤包含：
             - 长时间地内监控某些条件
             - 等待一个外部事件或者阈值达到满足条件
             - 周期性地检查某个条件直到满足
             - 某些需要周期性执行的任务 (比如，"每天检查", "持续监控")
 
 
-            ## 如何区分计划步骤
-
+            ### 如何区分计划步骤
             在这些情况下使用**SentinelPlanStep**:
             - 等待某个条件被满足 (比如, "等到我有2000个粉丝")
             - 持续地监控 (比如, "持续检查新提到的内容")
@@ -844,8 +889,7 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
             - 可以在一个执行周期内完成的任务
             
 
-            ## 步骤结构
-
+            ### 步骤结构
             每一步都必须包含一个title，一个details和一个agent_name字段。
             
             - **title** (string): title字段应该用一简短的句话表述此步骤。
@@ -894,8 +938,7 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
               
             
             
-            ## 关于重复执行步骤的重要规则
-            
+            ### 关于重复执行步骤的重要规则
             永远不要创建多个单独步骤来执行同一个重复的操作，仅创建一步**SentinelPlanStep**即可。
             
             如果一个操作需要被重复执行多次(比如，"每30s检查一次"，"每隔10s验证一次")，你一定只能创建一步**SentinelPlanStep**配合一个合适的控制条件condition，一定不要创建多个独立的步骤。
@@ -905,8 +948,7 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
             
             condition字段控制的是操作的重复次数，系统会自动根据condition字段重复执行操作。
             
-            ## JSON输出格式
-            
+            ### JSON输出
             基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析. 注意！严格遵循如下的JSON schema，一定不要输出JSON对象以外的任何信息。
 
             对于包含**SentinelPlanStep**和**PlanStep**的制定好的计划，输出的JSON对象格式应该遵循如下结构：
@@ -952,6 +994,7 @@ def get_orchestrator_plan_prompt_json(sentinel_tasks_enabled: bool = False) -> s
 
         agent_name字段是执行此步骤的智能体的名字，这个名字必须严格来自上述智能体团队中列出来的有效名字，不要自己编造智能体的名字。
 
+        ### JSON输出
         基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析. 注意！严格遵循如下的JSON schema，一定不要输出JSON对象以外的任何信息。
 
         输出的JSON对象要遵循如下的结构：
@@ -1015,6 +1058,8 @@ def get_orchestrator_progress_ledger_prompt(
     """Get the orchestrator progress ledger prompt, with optional SentinelPlanStep support."""
 
     base_prompt = """
+    
+    ## 工作进度
     回顾我们正在执行的用户请求:
 
     {task}
@@ -1040,16 +1085,25 @@ def get_orchestrator_progress_ledger_prompt(
 
     为了顺利的完成用户的请求, 请回答如下问题, 包含你的思考过程:
         
-        - is_current_step_complete: 当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)
-        - need_to_replan: 我们是否需要创建一个新的计划？("True":用户提出了新的请求，但当前的计划无法解决这个新请求，或者我们陷入一个死循环、遇到到了严重阻碍或者当前的方法是无效，从而导致用户的请求无法完成；"False":我们可以继续执行当前的计划。 大多数情况下都不需要重新创建新的任务。)
-        - instruction_or_question: 提供当前步骤相关的完整任务和计划上下文信息以及完成当前步骤的指导。同时提供非常详细的完成当前步骤的思考过程。如果下一步智能体是用户，直接向用户提一个简短的问题，否则，描述你将如何去完成这个步骤。
-        - agent_name: 从当前团队的成员列表 "{names}" 中决定谁来完成当前的任务步骤。
-        - progress_summary: 简要地给用户总结到目前为止计划的执行进展（最多两句话，一句话最佳），但是要提供足够的信息让用户知道已经完成了什么，什么进展得顺利，什么进展得不顺利。
+        - is_current_step_complete:
+            -当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)
+        - need_to_replan: 
+            - 我们是否需要创建一个新的计划？("True":用户提出了新的请求，但当前的计划无法解决这个新请求，或者我们陷入一个死循环、遇到到了严重阻碍或者当前的方法是无效，从而导致用户的请求无法完成；"False":我们可以继续执行当前的计划。 大多数情况下都不需要重新创建新的任务。)
+        - instruction_or_question: 
+            - 提供当前步骤相关的完整任务和计划上下文信息以及完成当前步骤的指导。同时提供非常详细的完成当前步骤的思考过程。
+            - 如果下一步智能体是用户，直接向用户提一个简短的问题，否则，描述你将如何去完成这个步骤。
+        - agent_name:
+            - 从当前团队的成员列表 "{names}" 中决定谁来完成当前的任务步骤。
+        - progress_summary:
+            - 简要地给用户总结到目前为止计划的执行进展（最多两句话，一句话最佳），但是要提供足够的信息让用户知道已经完成了什么，什么进展得顺利，什么进展得不顺利。
         
-    重点注意: 一定要遵循用户之前发送的任何要求和信息。
+    **重点注意**: 
+    - 一定要遵循用户之前发送的任何要求和信息。
+    - 你不需要考虑每一步骤是否缺少关键的上下文信息，交由你委派的成员智能体去考虑这些问题。
 
     {additional_instructions}
 
+    ## JSON输出
     基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析. 注意！严格遵循如下的JSON schema，一定不要输出JSON对象以外的任何信息。
 
     ```json
@@ -1072,7 +1126,6 @@ def get_orchestrator_progress_ledger_prompt(
     ```
     """
     return base_prompt
-
 
 def validate_ledger_json(json_response: Dict[str, Any], agent_names: List[str]) -> bool:
     """Validate ledger JSON response - same for both modes."""
@@ -1158,4 +1211,39 @@ def validate_plan_json(
             # PlanStep does not require sleep_duration or condition
             if "title" not in item or "details" not in item or "agent_name" not in item:
                 return False
+    return True
+
+def validate_preprocess_json(json_response: Dict[str, Any]) -> bool:
+    """Validate preprocess JSON response."""
+    if not isinstance(json_response, dict):
+        return False
+    required_keys = ["user_request", "request_type", "preset_plan"]
+    for key in required_keys:
+        if key not in json_response:
+            return False
+    
+    # Does a preset plan matched?
+    if json_response["request_type"].lower() == "preset":
+        if "task" not in json_response["preset_plan"] or not json_response["preset_plan"]["task"]:
+            return False
+
+        # Does the preset plan have more than 1 step and have required fields?
+        if "steps" not in json_response["preset_plan"]:
+            return False
+        else:
+            steps = json_response["preset_plan"]["steps"]
+            if len(steps) == 0:
+                return False
+            
+            for item in steps:
+                if not isinstance(item, dict):
+                    return False  
+                  
+                if (
+                    "title" not in item
+                    or "details" not in item
+                    or "agent_name" not in item
+                ):      
+                    return False 
+    
     return True

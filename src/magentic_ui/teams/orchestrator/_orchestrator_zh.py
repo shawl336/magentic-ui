@@ -53,13 +53,15 @@ from ._prompts import (
     get_orchestrator_plan_prompt_json,
     get_orchestrator_plan_replan_json,
     get_orchestrator_progress_ledger_prompt,
+    get_orchestrator_system_message_intent_preprocess,
     ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION,
     ORCHESTRATOR_FINAL_ANSWER_PROMPT,
     ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT,
     INSTRUCTION_AGENT_FORMAT,
-    PRESET_TASKS,
+    PRESET_PLANS,
     validate_ledger_json,
     validate_plan_json,
+    validate_preprocess_json,
 )
 from ._sentinel_prompts import (
     ORCHESTRATOR_SENTINEL_CONDITION_CHECK_PROMPT,
@@ -233,6 +235,11 @@ class Orchestrator(BaseGroupChatManager):
         )
         self._last_browser_metadata_hash = ""
 
+    def _get_system_message_intent_preprocess(self) -> str:
+        return get_orchestrator_system_message_intent_preprocess().format(
+            preset_plans=PRESET_PLANS,
+        )
+        
     def _get_system_message_planning(
         self,
     ) -> str:
@@ -243,7 +250,6 @@ class Orchestrator(BaseGroupChatManager):
             ).format(
                 date_today=date_today,
                 team=self._team_description,
-                preset_tasks=PRESET_TASKS,
             )
         else:
             return get_orchestrator_system_message_planning(
@@ -251,10 +257,9 @@ class Orchestrator(BaseGroupChatManager):
             ).format(
                 date_today=date_today,
                 team=self._team_description,
-                preset_tasks=PRESET_TASKS,
             )
 
-    def _get_task_ledger_plan_prompt(self, team: str) -> str:
+    def _get_task_ledger_plan_prompt(self) -> str:
         additional_instructions = ""
         if self._config.allowed_websites is not None:
             additional_instructions = (
@@ -264,10 +269,10 @@ class Orchestrator(BaseGroupChatManager):
 
         return get_orchestrator_plan_prompt_json(
             self._config.sentinel_plan.enable_sentinel_steps
-        ).format(team=team, additional_instructions=additional_instructions)
+        ).format(additional_instructions=additional_instructions)
 
     def _get_task_ledger_replan_plan_prompt(
-        self, task: str, team: str, plan: str
+        self, task: str, plan: str
     ) -> str:
         additional_instructions = ""
         if self._config.allowed_websites is not None:
@@ -279,7 +284,6 @@ class Orchestrator(BaseGroupChatManager):
             self._config.sentinel_plan.enable_sentinel_steps
         ).format(
             task=task,
-            team=team,
             plan=plan,
             additional_instructions=additional_instructions,
         )
@@ -344,6 +348,9 @@ class Orchestrator(BaseGroupChatManager):
             json_response, self._config.sentinel_plan.enable_sentinel_steps
         )
 
+    def _validate_preprocess_json(self, json_response: Dict[str, Any]) -> bool:
+        return validate_preprocess_json(json_response)
+    
     async def validate_group_state(
         self, messages: List[BaseChatMessage] | None
     ) -> None:
@@ -446,7 +453,7 @@ class Orchestrator(BaseGroupChatManager):
         messages: List[LLMMessage],
         validate_json: Callable[[Dict[str, Any]], bool],
         cancellation_token: CancellationToken,
-    ) -> Dict[str, Any] | None:
+    ) -> Dict[str, Any]:
         """Get a JSON response from the model client.
         Args:
             messages (List[LLMMessage]): The messages to send to the model client.
@@ -512,7 +519,7 @@ class Orchestrator(BaseGroupChatManager):
                 f"Orchestrator遇到错误: {e}", internal=False
             )
             raise
-
+    
     @rpc
     async def handle_start(self, message: GroupChatStart, ctx: MessageContext) -> None:  # type: ignore
         """Handle the start of a group chat by selecting a speaker to start the conversation."""
@@ -709,6 +716,45 @@ class Orchestrator(BaseGroupChatManager):
             trace_logger.error(f"Error retrieving plans from memory: {e}")
         return None
 
+    async def _preprocess_user_request(
+        self,
+        user_request: str,
+        cancellation_token: CancellationToken
+        ) -> Dict[str, Any] | None:
+        """ Preprocess the user request, and check if it matches a preset task
+            Ensures:
+            1. All required fields are present
+            2. `task` and `steps` fileds are non empty if `request_type` == 'Preset'
+            3. `is_preset` will be a True object if `request_type` == 'Preset'
+            
+            Otherwise, return the raw response, `preset_plan` is not a Plan object
+        
+        """
+        context = self._thread_to_context(preprocess=True)
+        context.append(
+            UserMessage(content=user_request, source=self._name))
+        try: 
+            response = await self._get_json_response(
+                context, self._validate_preprocess_json, cancellation_token
+            )
+            
+            # Can this request be solve by a preset plan?
+            if response.get("request_type", "").lower() == "preset":
+                plan = Plan.from_list_of_dicts_or_str(response["preset_plan"])
+                if plan:
+                    plan.is_preset = True
+                else:
+                    trace_logger.error(f"A preset plan is matched but the returned STEPS is empty: {plan}")
+                response["preset_plan"] = plan
+                
+            return response
+            
+        except Exception as e:
+            trace_logger.exception(f"Error in preprocess user request: {e}")
+            # raise RuntimeError(f"预处理用户请求时发生错误，错误: {e}") from e
+            return None
+
+    #lx-todo, handle the exception in _orchestrate_step_planning
     async def _orchestrate_step_planning(
         self, cancellation_token: CancellationToken
     ) -> None:
@@ -745,7 +791,45 @@ class Orchestrator(BaseGroupChatManager):
                         most_relevant_plan
                     )
                     from_memory = True
-            # Do we already have a plan to follow and planning mode is disabled?
+                    
+            # Case 1: Does the user request match a preset plan
+            preprocess_response = await self._preprocess_user_request(last_user_message.content, cancellation_token)
+            if preprocess_response and isinstance(preprocess_response["preset_plan"], Plan):
+                self._state.plan = preprocess_response["preset_plan"]
+                self._state.plan_str = str(self._state.plan)
+                self._state.message_history.append(
+                    TextMessage(
+                        content="预设的工作计划:\n " + str(self._state.plan),
+                        source=self._name,
+                    )
+                )
+                plan_response = {
+                    "task": self._state.plan.task,
+                    "steps": [step.model_dump() for step in self._state.plan.steps],
+                    "needs_plan": True,
+                    "response": "",
+                    "plan_summary": self._state.plan.task,
+                    "from_memory": from_memory,
+                }
+                
+                await self._log_message_agentchat(
+                    dict_to_str(plan_response),
+                    metadata={"internal": "no", "type": "plan_message"},
+                )
+                
+                if not self._config.cooperative_planning:
+                    self._state.in_planning_mode = False
+                    await self._orchestrate_step_execution(
+                        cancellation_token, first_step=True
+                    )
+                    return
+                else:
+                    await self._request_next_speaker(
+                        self._user_agent_topic, cancellation_token
+                    )
+                    return
+                
+            # Case 2: Do we already have a plan (including recognised preset plans right above) to follow and planning mode is disabled?
             if self._config.plan is not None:
                 self._state.plan = self._config.plan
                 self._state.plan_str = str(self._config.plan)
@@ -780,7 +864,8 @@ class Orchestrator(BaseGroupChatManager):
                         self._user_agent_topic, cancellation_token
                     )
                     return
-            # Did the user provide a plan?
+                
+            # Case 3: Did the user provide a plan?
             user_plan = last_user_message.plan
             if user_plan is not None:
                 self._state.plan = user_plan
@@ -794,6 +879,7 @@ class Orchestrator(BaseGroupChatManager):
                     )
                     return
 
+            # Case 4: Make the plan by the orchestrator
             # assume the task is the last user message
             context = self._thread_to_context()
             # if bing search is enabled, do a bing search to help with planning
@@ -815,7 +901,7 @@ class Orchestrator(BaseGroupChatManager):
             # create a first plan
             context.append(
                 UserMessage(
-                    content=self._get_task_ledger_plan_prompt(self._team_description),
+                    content=self._get_task_ledger_plan_prompt(),
                     source=self._name,
                 )
             )
@@ -878,9 +964,7 @@ class Orchestrator(BaseGroupChatManager):
                     await self._handle_relevant_plan_from_memory(context=context)
                 context.append(
                     UserMessage(
-                        content=self._get_task_ledger_plan_prompt(
-                            self._team_description
-                        ),
+                        content=self._get_task_ledger_plan_prompt(),
                         source=self._name,
                     )
                 )
@@ -1137,7 +1221,6 @@ class Orchestrator(BaseGroupChatManager):
         # Add completed steps info to replan prompt
         replan_prompt = self._get_task_ledger_replan_plan_prompt(
             self._state.task,
-            self._team_description,
             f"已完成以下步骤:\n{completed_plan_str}\n\n之前的计划:\n{self._state.plan_str}",
         )
         context.append(
@@ -1249,7 +1332,8 @@ class Orchestrator(BaseGroupChatManager):
             await self._termination_condition.reset()
 
     def _thread_to_context(
-        self, messages: Optional[List[BaseChatMessage | BaseAgentEvent]] = None
+        self, messages: Optional[List[BaseChatMessage | BaseAgentEvent]] = None,
+        preprocess: bool = False
     ) -> List[LLMMessage]:
         """Convert the message thread to a context for the model."""
         chat_messages: List[BaseChatMessage | BaseAgentEvent] = (
@@ -1258,7 +1342,11 @@ class Orchestrator(BaseGroupChatManager):
         context_messages: List[LLMMessage] = []
         date_today = datetime.now().strftime("%d %B, %Y")
 
-        if self._state.in_planning_mode:
+        if preprocess:
+            context_messages.append(
+                SystemMessage(content=self._get_system_message_intent_preprocess())
+            )
+        elif self._state.in_planning_mode:
             context_messages.append(
                 SystemMessage(content=self._get_system_message_planning())
             )
