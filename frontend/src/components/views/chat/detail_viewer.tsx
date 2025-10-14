@@ -77,6 +77,7 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
   const [viewMode, setViewMode] = useState<"iframe" | "novnc" | "doc">("iframe");
   const vncRef = useRef();
   const [isdocModalOpen, setIsdocModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -127,6 +128,13 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
       setViewMode("novnc");
     }
   }, [docUrl]);
+
+  // Refresh document iframe when modal closes
+  React.useEffect(() => {
+    if (!isdocModalOpen) {
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [isdocModalOpen]);
 
   // Add keyboard navigation
   React.useEffect(() => {
@@ -226,8 +234,8 @@ const DetailViewer: React.FC<DetailViewerProps> = ({
       );
     }
 
-    return <DocumentIframe docUrl={docUrl} />;
-  }, [docUrl, viewMode]);
+    return <DocumentIframe key={refreshKey} docUrl={docUrl} />;
+  }, [docUrl, viewMode, refreshKey]);
 
   const renderLiveTab = React.useMemo(() => {
     if (viewMode == "doc")

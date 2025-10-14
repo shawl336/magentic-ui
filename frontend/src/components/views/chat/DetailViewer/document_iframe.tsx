@@ -61,6 +61,7 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
         await loadOnlyOfficeAPI();
 
         const config = {
+          type: 'desktop',
           document: {
             fileType: 'docx',
             key: documentKey,
@@ -69,12 +70,12 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
           },
           documentType: 'word',
           editorConfig: {
-            mode: 'view',
+            mode: 'edit',
             lang: 'zh-CN',
             callbackUrl: 'http://172.17.0.1:8081/api/callback',
             user: {
-              id: user?.email || 'guestuser@gmail.com',
-              name: user?.email?.split('@')[0] || 'guestuser',
+              id: user?.email || '游客',
+              name: user?.email?.split('@')[0] || '游客',
             },
           },
           height: '100%',

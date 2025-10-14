@@ -39,6 +39,7 @@
     "gatsby-source-filesystem": "^5.14.0",
     "gatsby-transformer-sharp": "^5.14.0",
     "i18n": "^0.15.1",
+    "i18next": "^25.6.0",
     "install": "^0.13.0",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.460.0",

@@ -765,7 +765,7 @@ const RunView: React.FC<RunViewProps> = ({
           !isDetailViewerMinimized
             ? detailViewerExpanded
               ? "w-0"
-              : "w-[40%]"
+              : "w-[95%]"
             : "w-full"
         } transition-all duration-300`}
       >
@@ -908,7 +908,7 @@ const RunView: React.FC<RunViewProps> = ({
         !isDetailViewerMinimized && (
           <div
             className={`${
-              detailViewerExpanded ? "w-full" : "w-[60%]"
+              detailViewerExpanded ? "w-full" : "w-[95%]"
             } self-start sticky top-0 h-full`}
           >
             <div className="h-full flex-1">
