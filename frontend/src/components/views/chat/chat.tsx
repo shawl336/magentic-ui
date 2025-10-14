@@ -84,7 +84,7 @@ export default function ChatView({
   const serverUrl = getServerUrl();
   const [error, setError] = React.useState<IStatus | null>({
     status: true,
-    message: "All good",
+    message: t("All good"),
   });
   const [updatedPlan, setUpdatedPlan] = React.useState<IPlanStep[]>([]);
   const [localPlan, setLocalPlan] = React.useState<IPlan | null>(null);
@@ -1370,8 +1370,9 @@ export default function ChatView({
                   selectedMcpServers={selectedMcpServers}
                   onSelectedMcpServersChange={setSelectedMcpServers}
                 />
-              </div>
-              <SampleTasks
+              </div> 
+              {/* disabled the sample task */}
+              {/* <SampleTasks
                 onSelect={(task: string) => {
                   if (chatInputRef.current) {
                     // Set the input value and trigger submit
@@ -1400,7 +1401,7 @@ export default function ChatView({
                     }, 100);
                   }
                 }}
-              />
+              /> */}
             </div>
           )}
         </div>

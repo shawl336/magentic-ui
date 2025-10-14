@@ -9,7 +9,7 @@ class OrchestratorConfig(BaseModel):
     Configuration class for Orchestrator.
 
     Attributes:
-        cooperative_planning (bool): Enable co-planning mode, requiring user-proxy feedback on plans. Default: True.
+        cooperative_planning (bool): Enable co-planning mode, requiring user-proxy feedback on plans. Default: False.
         autonomous_execution (bool): Enable autonomous execution mode; no human input is requested during execution. Default: False.
         allow_follow_up_input (bool): Flag to determine if new input should be requested after a final answer is given. Default: True.
         plan (Optional[Plan]): A pre-defined plan. In cooperative planning mode, the plan will be enhanced with user feedback.
@@ -26,9 +26,11 @@ class OrchestratorConfig(BaseModel):
         max_replans (int, optional): Maximum number of replans allowed. Default: 3.
         no_overwrite_of_task (bool, optional): Whether to prevent the orchestrator from overwriting the task. Default: False.
         sentinel_plan (SentinelPlanConfig, optional): Configuration for sentinel plan functionality. Default: SentinelPlanConfig().
+        internal_run_dir (Path, optional): The directory for the internal run. i.e {internal_root_dir}/{run_suffix}
+        external_run_dir (Path, optional): The directory for the external run. i.e {external_root_dir}/{run_suffix}
     """
 
-    cooperative_planning: bool = True
+    cooperative_planning: bool = False
     autonomous_execution: bool = False
     allow_follow_up_input: bool = True
     plan: Optional[Plan] = None
@@ -45,3 +47,5 @@ class OrchestratorConfig(BaseModel):
     max_replans: Union[int, None] = 3
     no_overwrite_of_task: bool = False
     sentinel_plan: SentinelPlanConfig = Field(default_factory=SentinelPlanConfig)
+    internal_run_dir: str = ""
+    external_run_dir: str = ""

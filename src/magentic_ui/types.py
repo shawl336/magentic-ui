@@ -75,6 +75,7 @@ class Plan(BaseModel):
     """
 
     task: Optional[str]
+    is_preset: bool = False
     steps: Sequence[PlanStep]
 
     def __getitem__(self, index: int) -> PlanStep:
@@ -87,9 +88,19 @@ class Plan(BaseModel):
         """Return the string representation of the plan."""
         plan_str = ""
         if self.task is not None:
-            plan_str += f"Task: {self.task}\n"
+            plan_str += f"""
+            
+    任务: {self.task}
+    是否预设任务:{'是' if self.is_preset else '否'} 
+    """
         for i, step in enumerate(self.steps):
-            plan_str += f"{i}. {step.agent_name}: {step.title}\n   {step.details}\n"
+            plan_str += f"""
+            
+    第{i}步: 
+        执行智能体: {step.agent_name}
+        步骤标题: {step.title}
+        步骤详细描述: {step.details}
+    """
             if isinstance(step, SentinelPlanStep):
                 condition_str = str(step.condition)
                 plan_str += f"   [哨兵: 每{step.sleep_duration}s, 条件: {condition_str}]\n"

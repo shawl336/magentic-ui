@@ -18,6 +18,10 @@ from .approval_guard import (
     ApprovalGuardContext,
     BaseApprovalGuard,
 )
+
+from .agents._electrical_design_dummy import ElectricalDesignAgent
+from .agents.electrical_docgen._electrical_requirement_validator import ElectricalRequirementValidator
+
 from .input_func import InputFuncType, make_agentchat_input_func
 from .learning.memory_provider import MemoryControllerProvider
 from .magentic_ui_config import MagenticUIConfig, ModelClientConfigs
@@ -27,6 +31,18 @@ from .tools.playwright.browser import get_browser_resource_config
 from .types import RunPaths
 from .utils import get_internal_urls
 
+agent_class2name: Dict[Any, str] = {
+    ElectrialcalDocGenAgent: "documentation_analysis_and_generation_agent",
+    CodingDelegatorAgent: "coding_agent",
+    CoderAgent: "coder_agent",
+    FileSurfer: "file_surfer",
+    WebSurfer: "web_surfer",
+    McpAgent: "mcp_agent",
+    UserProxyAgent: "user_proxy",
+    ApprovalGuard: "approval_guard",
+    ElectricalDesignAgent: "electrical_design_agent",
+    ElectricalRequirementValidator: "electrical_requirement_validator",
+}
 
 async def get_task_team(
     magentic_ui_config: Optional[MagenticUIConfig] = None,
@@ -109,12 +125,14 @@ async def get_task_team(
         allow_follow_up_input=magentic_ui_config.allow_follow_up_input,
         final_answer_prompt=magentic_ui_config.final_answer_prompt,
         sentinel_plan=magentic_ui_config.sentinel_plan,
+        internal_run_dir=str(paths.internal_run_dir),
+        external_run_dir=str(paths.external_run_dir),
     )
     websurfer_model_client = magentic_ui_config.model_client_configs.web_surfer
     if websurfer_model_client is None:
         websurfer_model_client = ModelClientConfigs.get_default_client_config()
     websurfer_config = WebSurferConfig(
-        name="web_surfer",
+        name=agent_class2name[WebSurfer],
         model_client=websurfer_model_client,
         browser=browser_resource_config,
         single_tab_mode=False,
@@ -148,7 +166,7 @@ async def get_task_team(
             magentic_ui_config.answer is not None
         ), "Answer must be provided for metadata user proxy"
         user_proxy = MetadataUserProxy(
-            name="user_proxy",
+            name=agent_class2name[UserProxyAgent],
             description="Metadata User Proxy Agent",
             task=magentic_ui_config.task,
             helpful_task_hints=magentic_ui_config.hints,
@@ -159,7 +177,7 @@ async def get_task_team(
         user_proxy_input_func = make_agentchat_input_func(input_func)
         user_proxy = UserProxyAgent(
             description=USER_PROXY_DESCRIPTION,
-            name="user_proxy",
+            name=agent_class2name[UserProxyAgent],
             input_func=user_proxy_input_func,
         )
 
@@ -206,7 +224,7 @@ async def get_task_team(
     file_surfer: FileSurfer | None = None
     if not magentic_ui_config.run_without_docker:
         coder_agent = CoderAgent(
-            name="coder_agent",
+            name=agent_class2name[CoderAgent],
             model_client=model_client_coder,
             work_dir=paths.internal_run_dir,
             bind_dir=paths.external_run_dir,
@@ -215,32 +233,13 @@ async def get_task_team(
         )
 
         file_surfer = FileSurfer(
-            name="file_surfer",
+            name=agent_class2name[FileSurfer],
             model_client=model_client_file_surfer,
             work_dir=paths.internal_run_dir,
             bind_dir=paths.external_run_dir,
             model_context_token_limit=magentic_ui_config.model_context_token_limit,
             approval_guard=approval_guard,
         )
-
-    # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
-    model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
-
-    # {appdir}/files/user/{user_id}/{session_id}/{run_id}/coding
-    coding_work_dir = paths.internal_run_dir / "coding"
-    # /data/gemini-cli/generate/{run_id}/coding
-    coding_bind_dir = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) / "generate" / str(run_id) /"coding"
-    
-    coding_agent = CodingDelegatorAgent(
-        name="coding_agent",
-        model_client=model_client_coder,
-        coding_provider="gemini_cli",
-        work_dir=coding_work_dir,
-        bind_dir=coding_bind_dir,
-        run_id=run_id,
-        model_context_token_limit=magentic_ui_config.model_context_token_limit,
-        approval_guard=approval_guard,
-    )
     
     # Setup any mcp_agents
     mcp_agents: List[McpAgent] = [
@@ -262,7 +261,7 @@ async def get_task_team(
         memory_provider = None
 
     team_participants: List[ChatAgent | Team] = [
-        web_surfer,
+        # web_surfer, lx-todo, may uncomment it
         user_proxy,
     ]
     if not magentic_ui_config.run_without_docker:
@@ -273,15 +272,61 @@ async def get_task_team(
     # add electridocgen agent
     # TODO: add electradocgen model_client
     electrical_gendoc = ElectrialcalDocGenAgent(
-        "electrical_gendoc",
+        agent_class2name[ElectrialcalDocGenAgent],
         model_client_file_surfer,
         work_dir=paths.internal_run_dir,
         bind_dir=paths.external_run_dir,
         model_client_stream = True,
     )
     
+    # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
+    model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
+
+    # These work/bind root dir are designed to make the agents see the files in the same RELATIVE paths
+    # in both the local filesystem and the docker container
+    # {appdir}/files/user/{user_id}/{session_id}/{run_id}, NOTE currently {session_id} == {run_id}
+    coding_work_root = paths.internal_root_dir # path.internal_root_dir + path.run_suffix
+    work_relative_dir = Path(paths.run_suffix)
+    # /data/gemini-cli
+    coding_bind_root = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) 
+    coding_bind_relative_dir = Path(paths.run_suffix) # coding_bind_root + path.run_suffix
+    
+    coding_agent = CodingDelegatorAgent(
+        name=agent_class2name[CodingDelegatorAgent],
+        model_client=model_client_coder,
+        coding_provider="gemini_cli",
+        work_root=coding_work_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=coding_bind_root,
+        bind_relative_dir=coding_bind_relative_dir,
+        run_id=run_id,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+    )
+    
+    electrical_design_dummy_agent = ElectricalDesignAgent(
+        name=agent_class2name[ElectricalDesignAgent],
+        model_client=model_client_file_surfer,
+        work_root=coding_work_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=coding_bind_root,
+        bind_relative_dir=coding_bind_relative_dir,
+        run_id=run_id,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+    )
+    
+    electrical_requirement_validator = ElectricalRequirementValidator(
+        name=agent_class2name[ElectricalRequirementValidator],
+        model_client=model_client_file_surfer,
+        work_root=paths.internal_root_dir,
+        work_relative_dir=work_relative_dir,
+        bind_root=Path(),
+        bind_relative_dir=Path(),
+    )
+    
     # custom agents
-    team_participants.extend([electrical_gendoc, coding_agent])
+    team_participants.extend([electrical_gendoc, coding_agent, electrical_design_dummy_agent, electrical_requirement_validator])
     team = GroupChat(
         name="task_team",
         description="A team of agents that can help with the task",

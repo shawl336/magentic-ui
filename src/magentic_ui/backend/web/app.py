@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             os.environ["EXTERNAL_WORKSPACE_ROOT"],
             os.environ["INSIDE_DOCKER"] == "1",
             config,
-            os.environ["RUN_WITHOUT_DOCKER"] == "True",
+            os.environ.get("RUN_WITHOUT_DOCKER", "") == "True",
         )
                 
         # Any other initialization code
@@ -99,6 +99,10 @@ app.add_middleware(
         "http://localhost:8099",       # OnlyOffice server (localhost access)
         "http://192.168.52.183:8099",   # Keep old IP for backward compatibility
         "*",  # Allow all origins for development
+        "http://127.0.0.1:8081",
+        "http://0.0.0.0:8000",
+        "http://0.0.0.0:8001",
+        "http://0.0.0.0:8081",
     ],
     allow_credentials=True,
     allow_methods=["*"],

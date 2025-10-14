@@ -40,9 +40,12 @@ const SignInModal = ({ isVisible, onClose }: SignInModalProps) => {
       maskClosable={isAlreadySignedIn}
       onCancel={isAlreadySignedIn ? onClose : undefined}
     >
-      <span className="text-lg">
-        {(t("Enter a username.'))}<br></br> {(t('A change of username will create a new profile."))}
-      </span>
+      <span 
+        className="text-lg"
+        dangerouslySetInnerHTML={{
+          __html: t("Enter a username. <br></br> A change of username will create a new profile.")
+        }}
+      />
       <div className="mb-4">
         <Input
           type="text"
