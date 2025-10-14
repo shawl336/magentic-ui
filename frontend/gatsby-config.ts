@@ -24,6 +24,10 @@ const config: GatsbyConfig = {
   // If you use VSCode you can also use the GraphQL plugin
   // Learn more at: https://gatsby.dev/graphql-typegen
   graphqlTypegen: true,
+  proxy: {
+    prefix: "/api",
+    url: "http://localhost:8081",
+  },
   plugins: [
     "gatsby-plugin-postcss",
     "gatsby-plugin-image",

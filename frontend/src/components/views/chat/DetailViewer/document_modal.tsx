@@ -34,7 +34,7 @@ const DocumentModal: React.FC<DocumentModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center pb-3 mb-2 border-b sticky top-0 bg-white z-20">
-          <h2 className="text-xl font-semibold truncate pr-2">{t(title)}</h2>
+          <h2 className="text-xl font-semibold truncate pr-2">{title || "Document"}</h2>
           <button
             onClick={onClose}
             className="p-1 hover:bg-gray-100 rounded-full transition-colors"
