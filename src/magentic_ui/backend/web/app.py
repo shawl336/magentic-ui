@@ -1,6 +1,5 @@
 # api/app.py
 import os
-from pathlib import Path
 import yaml
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
@@ -96,6 +95,10 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://localhost:8001",
+        "http://localhost:8081",
+        "http://localhost:8099",       # OnlyOffice server (localhost access)
+        "http://192.168.52.183:8099",   # Keep old IP for backward compatibility
+        "*",  # Allow all origins for development
         "http://127.0.0.1:8081",
         "http://0.0.0.0:8000",
         "http://0.0.0.0:8001",
@@ -196,6 +199,101 @@ async def health_check():
         "status": True,
         "message": "Service is healthy",
     }
+
+
+# OnlyOffice callback endpoint
+@api.post("/callback")
+async def onlyoffice_callback(request: Request):
+    """OnlyOffice document callback endpoint"""
+    try:
+        body = await request.json()
+        logger.info(f"OnlyOffice callback received: {body}")
+
+        # For read-only mode, we just acknowledge the callback
+        # In the future, if edit mode is needed, implement document saving logic here
+        if body.get('status') == 2:  # Document is ready for saving
+            logger.info("Document ready for saving, but operating in read-only mode")
+
+        return {"error": 0}
+    except Exception as e:
+        logger.error(f"Error in OnlyOffice callback: {str(e)}")
+        return {"error": 1, "message": str(e)}
+
+
+# OnlyOffice document access endpoint
+@api.get("/document/{file_path:path}")
+@api.head("/document/{file_path:path}")
+async def serve_document_for_onlyoffice(file_path: str, request: Request):
+    """Serve documents for OnlyOffice access with proper headers"""
+    try:
+        # URL decode the file path to handle encoded characters (like Chinese filenames)
+        import urllib.parse
+        decoded_file_path = urllib.parse.unquote(file_path)
+
+        # Construct the full file path
+        full_path = os.path.join(initializer.static_root, decoded_file_path)
+
+        # Security check: ensure the file is within the static root
+        if not os.path.abspath(full_path).startswith(os.path.abspath(initializer.static_root)):
+            logger.warning(f"Attempted access to file outside static root: {decoded_file_path} (original: {file_path})")
+            return {"error": "Access denied"}
+
+        # Check if file exists
+        if not os.path.exists(full_path):
+            logger.warning(f"File not found: {full_path} (decoded path: {decoded_file_path})")
+            return {"error": "File not found"}
+
+        # Read and serve the file with proper headers for OnlyOffice
+        with open(full_path, 'rb') as f:
+            content = f.read()
+
+        # Determine content type based on file extension
+        content_type = "application/octet-stream"  # Default
+        if file_path.lower().endswith('.docx'):
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif file_path.lower().endswith('.doc'):
+            content_type = "application/msword"
+        elif file_path.lower().endswith('.xlsx'):
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif file_path.lower().endswith('.xls'):
+            content_type = "application/vnd.ms-excel"
+        elif file_path.lower().endswith('.pptx'):
+            content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        elif file_path.lower().endswith('.ppt'):
+            content_type = "application/vnd.ms-powerpoint"
+
+        # Return file with proper headers
+        from fastapi.responses import Response
+
+        # For HEAD requests, only return headers without content
+        if request.method == "HEAD":
+            return Response(
+                content=b"",
+                media_type=content_type,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Cache-Control": "no-cache",
+                    "Content-Length": str(len(content)),  # Include content length in headers
+                }
+            )
+
+        # For GET requests, return content
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Cache-Control": "no-cache",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error serving document {file_path}: {str(e)}")
+        return {"error": f"Failed to serve document: {str(e)}"}
 
 
 # Mount static file directories

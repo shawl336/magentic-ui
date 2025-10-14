@@ -40,6 +40,7 @@ interface FileCardProps {
 
 interface RenderFileProps {
   message: AgentMessageConfig;
+  sessionId?: number;
 }
 
 // File type to icon mapping
@@ -451,11 +452,14 @@ const FileCard = memo<FileCardProps>(({ file, onFileClick }) => {
 FileCard.displayName = "FileCard";
 
 // Main RenderFile component
-const RenderFile: React.FC<RenderFileProps> = ({ message }) => {
+const RenderFile: React.FC<RenderFileProps> = ({ message, sessionId }) => {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+  // Get user information
+  const userEmail = "guestuser@gmail.com"; // Default user email
 
   useEffect(() => {
     // Extract file information from the message metadata
@@ -493,13 +497,18 @@ const RenderFile: React.FC<RenderFileProps> = ({ message }) => {
   const handleFileClick = (file: FileInfo): void => {
     // Special handling for docx: display in side doc iframe instead of modal
     if (file.type === "docx") {
-      const rawUrl =
-        getServerUrl().replace("/api", "") +
-        `/${file.short_path || file.path || file.name}`;
+      // Use file path directly, assuming it already contains session information
+      // If not, construct the full path with session ID
+      let filePath = file.short_path || file.path || file.name;
+
+      // If the path doesn't already contain session info, add it
+      if (sessionId && !filePath.includes(`user/${userEmail}`)) {
+        filePath = `user/${userEmail}/${sessionId}/${sessionId}/${filePath}`;
+      }
 
       // Notify layout to show the side doc viewer
       window.dispatchEvent(
-        new CustomEvent("show-doc", { detail: { url: rawUrl } })
+        new CustomEvent("show-doc", { detail: { url: filePath } })
       );
       return;
     }
