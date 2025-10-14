@@ -53,6 +53,7 @@ from ._prompts import (
     get_orchestrator_plan_prompt_json,
     get_orchestrator_plan_replan_json,
     get_orchestrator_progress_ledger_prompt,
+    get_orchestrator_progress_ledger_prompt_preset_plan,
     get_orchestrator_system_message_intent_preprocess,
     ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION,
     ORCHESTRATOR_FINAL_ANSWER_PROMPT,
@@ -60,6 +61,7 @@ from ._prompts import (
     INSTRUCTION_AGENT_FORMAT,
     PRESET_PLANS,
     validate_ledger_json,
+    validate_ledger_json_preset_plan,
     validate_plan_json,
     validate_preprocess_json,
 )
@@ -175,6 +177,14 @@ class Orchestrator(BaseGroupChatManager):
                     f"User agent topic {self._user_agent_topic} 不在团队列表中: {self._participant_names}"
                 )
         
+        # Maintain a map for participant_names to participant_descriptions, 
+        # for set the orchestrated team participants which is a subset of participant_names        
+        self._participants_name2desc = {name: description 
+                                        for name, description 
+                                        in zip(self._participant_names, 
+                                               self._participant_descriptions, 
+                                               strict=True)}
+
         self._memory_controller = None
         self._memory_provider = memory_provider
         if (
@@ -201,11 +211,23 @@ class Orchestrator(BaseGroupChatManager):
         Setup internal variables used in orchestrator
         """
         self._state: OrchestratorState = OrchestratorState()
-
-        # Create filtered lists for execution that may exclude the user agent
-        self._agent_execution_names = self._participant_names.copy()
-        self._agent_execution_descriptions = self._participant_descriptions.copy()
-
+        self._last_browser_metadata_hash = ""
+        
+    def _set_team_spec(self, plan: Plan) -> None:
+        """
+        Set the orchestrated team specification, the team members must be subset of self._participant_names
+        """
+        self._agent_execution_names: List[str] = []
+        self._agent_execution_descriptions: List[str] = []
+        for step in plan.steps:
+            if step.agent_name not in self._agent_execution_names:
+                self._agent_execution_names.append(step.agent_name)
+                self._agent_execution_descriptions.append(self._participants_name2desc[step.agent_name])
+        # Must ensure the orchestrated agents exist in self._participant_names
+        non_exist_agents = [agent for agent in self._agent_execution_names if agent not in self._participant_names]
+        if non_exist_agents:
+            raise ValueError(f"计划中出现了不存在的的智能体: {str(non_exist_agents)}，存在的智能体列表:{str(self._participant_names)}")        
+          
         if self._config.autonomous_execution:
             # Filter out the user agent from execution lists
             user_indices = [
@@ -217,6 +239,11 @@ class Orchestrator(BaseGroupChatManager):
                 user_index = user_indices[0]
                 self._agent_execution_names.pop(user_index)
                 self._agent_execution_descriptions.pop(user_index)
+        elif self._user_agent_topic not in self._agent_execution_names:
+            # Add the user agent to the execution lists
+            self._agent_execution_names.append(self._user_agent_topic)
+            self._agent_execution_descriptions.append(self._participants_name2desc[self._user_agent_topic])
+            
         # add a a new participant for the orchestrator to do nothing
         self._agent_execution_names.append("no_action_agent")
         self._agent_execution_descriptions.append(
@@ -233,7 +260,6 @@ class Orchestrator(BaseGroupChatManager):
                 )
             ]
         )
-        self._last_browser_metadata_hash = ""
 
     def _get_system_message_intent_preprocess(self) -> str:
         return get_orchestrator_system_message_intent_preprocess().format(
@@ -294,7 +320,7 @@ class Orchestrator(BaseGroupChatManager):
         )
 
     def _get_progress_ledger_prompt(
-        self, task: str, plan: str, step_index: int, team: str, names: List[str]
+        self, task: str, plan: str, step_index: int, team: str, names: List[str], is_preset_plan: bool, 
     ) -> str:
         assert self._state.plan is not None
         additional_instructions = ""
@@ -308,17 +334,31 @@ class Orchestrator(BaseGroupChatManager):
         ):
             step_type = "SentinelPlanStep"
 
+        if is_preset_plan:
+            return get_orchestrator_progress_ledger_prompt_preset_plan().format(
+                task=task,
+                plan=plan,
+                step_index=step_index + 1,   # For human-readable, step indexd from 1 in the prompt
+                step_title=self._state.plan[step_index].title,
+                step_details=self._state.plan[step_index].details,
+                step_type=step_type,
+                agent_name=self._state.plan[step_index].agent_name,
+                # team=team, #lx-exprimental removed, the team is member too many time in the prompt
+                names=", ".join(names),
+                additional_instructions=additional_instructions,
+            )
+        
         return get_orchestrator_progress_ledger_prompt(
             self._config.sentinel_plan.enable_sentinel_steps
         ).format(
             task=task,
             plan=plan,
-            step_index=step_index,
+            step_index=step_index + 1,   # For human-readable, step indexd from 1 in the prompt
             step_title=self._state.plan[step_index].title,
             step_details=self._state.plan[step_index].details,
             step_type=step_type,
             agent_name=self._state.plan[step_index].agent_name,
-            team=team,
+            # team=team, #lx-exprimental removed, the team is member too many time in the prompt
             names=", ".join(names),
             additional_instructions=additional_instructions,
         )
@@ -333,7 +373,7 @@ class Orchestrator(BaseGroupChatManager):
         assert self._state.plan is not None
 
         return INSTRUCTION_AGENT_FORMAT.format(
-            step_index=self._state.current_step_idx + 1,
+            step_index=self._state.current_step_idx + 1, # For human-readable, step indexd from 1 in the prompt
             step_title=self._state.plan[self._state.current_step_idx].title,
             step_details=self._state.plan[self._state.current_step_idx].details,
             agent_name=agent_name,
@@ -342,6 +382,9 @@ class Orchestrator(BaseGroupChatManager):
 
     def _validate_ledger_json(self, json_response: Dict[str, Any]) -> bool:
         return validate_ledger_json(json_response, self._agent_execution_names)
+    
+    def _validate_ledger_json_preset_plan(self, json_response: Dict[str, Any]) -> bool:
+        return validate_ledger_json_preset_plan(json_response, self._agent_execution_names)
 
     def _validate_plan_json(self, json_response: Dict[str, Any]) -> bool:
         return validate_plan_json(
@@ -718,21 +761,18 @@ class Orchestrator(BaseGroupChatManager):
 
     async def _preprocess_user_request(
         self,
-        user_request: str,
         cancellation_token: CancellationToken
         ) -> Dict[str, Any] | None:
         """ Preprocess the user request, and check if it matches a preset task
             Ensures:
             1. All required fields are present
             2. `name` and `steps` fileds are non empty if `request_type` == 'Preset'
-            3. `is_preset` will be a True object if `request_type` == 'Preset'
+            3. will add a `plan` field if `request_type` == 'Preset'
             
             Otherwise, return the raw response, `preset_plan` is not a Plan object
         
         """
         context = self._thread_to_context(preprocess=True)
-        context.append(
-            UserMessage(content=user_request, source=self._name))
         try: 
             response = await self._get_json_response(
                 context, self._validate_preprocess_json, cancellation_token
@@ -745,8 +785,10 @@ class Orchestrator(BaseGroupChatManager):
                     plan.is_preset = True
                 else:
                     trace_logger.error(f"A preset plan is matched but the returned STEPS is empty: {plan}")
-                response["preset_plan"] = plan
-                
+                response["plan"] = plan
+            else:
+                response["plan"] = None
+
             return response
             
         except Exception as e:
@@ -793,27 +835,34 @@ class Orchestrator(BaseGroupChatManager):
                     from_memory = True
                     
             # Case 1: Does the user request match a preset plan
-            preprocess_response = await self._preprocess_user_request(last_user_message.content, cancellation_token)
-            if preprocess_response and isinstance(preprocess_response["preset_plan"], Plan):
-                self._state.plan = preprocess_response["preset_plan"]
+            preprocess_response = await self._preprocess_user_request(cancellation_token)
+            if preprocess_response and isinstance(preprocess_response["plan"], Plan):
+                self._state.plan = preprocess_response["plan"]
                 self._state.plan_str = str(self._state.plan)
                 if not self._config.no_overwrite_of_task:
                     self._state.task = preprocess_response["task"]
-                # add plan_response to the message thread
-                self._state.message_history.append(
-                    TextMessage(
-                        content="匹配到预设的工作计划:\n " + json.dumps(plan_response, ensure_ascii=False, indent=4), source=self._name
-                    )
-                )
-
+                
+                # set the orchestrated team specification
+                self._set_team_spec(self._state.plan)
+                
                 plan_response = {
                     "task": self._state.plan.task,
+                    "preset_plan": preprocess_response["preset_plan"],
                     "steps": [step.model_dump() for step in self._state.plan.steps],
                     "needs_plan": True,
                     "response": "",
                     "plan_summary": self._state.plan.task,
                     "from_memory": from_memory,
                 }
+
+                
+                # add plan_response to the message thread
+                self._state.message_history.append(
+                    TextMessage(
+                        content="匹配到预设的工作计划:\n " + json.dumps(plan_response, ensure_ascii=False, indent=4),
+                        source=self._name
+                    )
+                )
                 
                 await self._log_message_agentchat(
                     dict_to_str(plan_response),
@@ -838,10 +887,14 @@ class Orchestrator(BaseGroupChatManager):
                 self._state.plan_str = str(self._config.plan)
                 self._state.message_history.append(
                     TextMessage(
-                        content=json.dumps(plan_response, ensure_ascii=False, indent=4),
-                        source=self._name
+                        content="用户提供的初始计划:\n " + str(self._config.plan),
+                        source="user",
                     )
                 )
+                
+                # set the orchestrated team specification
+                self._set_team_spec(self._state.plan)
+                
                 plan_response = {
                     "task": self._state.plan.task,
                     "steps": [step.model_dump() for step in self._state.plan.steps],
@@ -873,6 +926,10 @@ class Orchestrator(BaseGroupChatManager):
             if user_plan is not None:
                 self._state.plan = user_plan
                 self._state.plan_str = str(user_plan)
+                
+                # set the orchestrated team specification
+                self._set_team_spec(self._state.plan)
+                
                 if last_user_message.accepted or is_accepted_str(
                     last_user_message.content
                 ):
@@ -921,6 +978,11 @@ class Orchestrator(BaseGroupChatManager):
             #lx-todo, handle the exception while from_list_of_dicts_or_str return None， otherwsie assertion "self._state.plan is not None" fails
             self._state.plan = Plan.from_list_of_dicts_or_str(plan_response["steps"])
             self._state.plan_str = str(self._state.plan)
+            
+            # set the orchestrated team specification
+            if self._state.plan:
+                self._set_team_spec(self._state.plan)
+            
             # add plan_response to the message thread
             self._state.message_history.append(
                 TextMessage(
@@ -935,6 +997,9 @@ class Orchestrator(BaseGroupChatManager):
                 if user_plan is not None:
                     self._state.plan = user_plan
                     self._state.plan_str = str(user_plan)
+                    # set the orchestrated team specification
+                    self._set_team_spec(self._state.plan)
+                
                 # switch to execution mode
                 self._state.in_planning_mode = False
                 await self._orchestrate_step_execution(
@@ -948,7 +1013,7 @@ class Orchestrator(BaseGroupChatManager):
                 if user_plan is not None:
                     self._state.plan = user_plan
                     self._state.plan_str = str(user_plan)
-
+                    
                 context = self._thread_to_context()
 
                 # if bing search is enabled, do a bing search to help with planning
@@ -1019,7 +1084,7 @@ class Orchestrator(BaseGroupChatManager):
                 return
         else:    
             # Is this the first step and a simple request needing no plans?
-            if not plan_response['needs_plan'] or len(plan_response['steps']) < 1:
+            if not plan_response['needs_plan'] or not self._state.plan:
                 await self._publish_group_chat_message(
                     plan_response["response"], cancellation_token
                 )
@@ -1029,6 +1094,9 @@ class Orchestrator(BaseGroupChatManager):
                 return
             
             self._state.in_planning_mode = False
+            # set the orchestrated team specification
+            self._set_team_spec(self._state.plan)
+            
             await self._publish_group_chat_message(
                 dict_to_str(plan_response),
                 metadata={"internal": "no", "type": "plan_message"},
@@ -1052,7 +1120,8 @@ class Orchestrator(BaseGroupChatManager):
         """
         # Execution stage
         if first_step:
-            # remove all messages from the message thread that are not from the user
+            # remove all messages from the message thread that are from the user
+            # Since the user request may be rephrased by the LLM and has been added to the task ledger
             self._state.message_history = [
                 m
                 for m in self._state.message_history
@@ -1089,12 +1158,15 @@ class Orchestrator(BaseGroupChatManager):
             self._state.current_step_idx,
             self._team_description,
             self._agent_execution_names,
+            self._state.plan.is_preset,
         )
 
         context.append(UserMessage(content=progress_ledger_prompt, source=self._name))
 
         progress_ledger = await self._get_json_response(
-            context, self._validate_ledger_json, cancellation_token
+            context,
+            self._validate_ledger_json_preset_plan if self._state.plan.is_preset else self._validate_ledger_json, 
+            cancellation_token
         )
         if self._state.is_paused:
             await self._request_next_speaker(self._user_agent_topic, cancellation_token)
@@ -1102,7 +1174,8 @@ class Orchestrator(BaseGroupChatManager):
         assert progress_ledger is not None
         # log the progress ledger
         await self._log_message_agentchat(dict_to_str(progress_ledger), internal=True)
-        if not first_step:
+        # lx-todo, Preset plan currently not support replan. May add the replan support in the future.
+        if not first_step and progress_ledger.get("need_to_replan", None):
             # Check for replans
             need_to_replan = progress_ledger["need_to_replan"]["answer"]
             replan_reason = progress_ledger["need_to_replan"]["reason"]

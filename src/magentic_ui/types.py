@@ -96,7 +96,7 @@ class Plan(BaseModel):
         for i, step in enumerate(self.steps):
             plan_str += f"""
             
-    第{i}步: 
+    第{i+1}步: 
         执行智能体: {step.agent_name}
         步骤标题: {step.title}
         步骤详细描述: {step.details}

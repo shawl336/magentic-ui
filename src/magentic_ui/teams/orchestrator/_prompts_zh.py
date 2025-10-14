@@ -44,25 +44,28 @@ ORCHESTRATOR_FINAL_ANSWER_PROMPT = """
 INSTRUCTION_AGENT_FORMAT = """
 
     步骤 {step_index}: {step_title}
-    \\n\\n
+
     {step_details}
-    \\n\\n
+
     {agent_name}的指令: {instruction}
 """
 
 # Keeps track of the task progress with a ledger so the orchestrator can see the progress
 ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT = """
 
+    ## 任务和计划概述
     我们正在努力完成以下用户请求：
-    \\n\\n
+
     {task}
-    \\n\\n
+
+    ### 团队配置
     为了解决这个请求，我们组建了以下团队：
-    \\n\\n
+
     {team}
-    \\n\\n
+
+    ### 计划内容
     以下是我们应尽力遵循的计划：
-    \\n\\n
+
     {plan}
 """
 
@@ -1057,7 +1060,7 @@ def get_orchestrator_progress_ledger_prompt(
 
     base_prompt = """
     
-    ## 工作进度
+    ## 计划执行进度
     回顾我们正在执行的用户请求:
 
     {task}
@@ -1072,32 +1075,26 @@ def get_orchestrator_progress_ledger_prompt(
 
     详细内容(details): {step_details}
 
-    agent_name: {agent_name}
-
-    我们已经组建了如下智能体团队:
-
-    {team}
+    执行的智能体名字(agent_name): {agent_name}
 
     用户还控制着浏览器智能体web_surfer的访问。
-
 
     为了顺利的完成用户的请求, 请回答如下问题, 包含你的思考过程:
         
         - is_current_step_complete:
-            -当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)
+            - 当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)
         - need_to_replan: 
             - 我们是否需要创建一个新的计划？("True":用户提出了新的请求，但当前的计划无法解决这个新请求，或者我们陷入一个死循环、遇到到了严重阻碍或者当前的方法是无效，从而导致用户的请求无法完成；"False":我们可以继续执行当前的计划。 大多数情况下都不需要重新创建新的任务。)
         - instruction_or_question: 
-            - 提供当前步骤相关的完整任务和计划上下文信息以及完成当前步骤的指导。同时提供非常详细的完成当前步骤的思考过程。
-            - 如果下一步智能体是用户，直接向用户提一个简短的问题，否则，描述你将如何去完成这个步骤。
+            - 提供当前步骤的指导，包含必要的任务和计划的上下文信息。请提供非常详细的解决思路以指导智能体完成这个步骤。如果下一步的智能体是用户，直接简短地向用户的提问。否则描述你将要去做的事情。
         - agent_name:
-            - 从当前团队的成员列表 "{names}" 中决定谁来完成当前的任务步骤。
+            - 决定谁来完成当前的任务步骤，只能来自于当前团队的成员列表中:"{names}" 。
         - progress_summary:
             - 简要地给用户总结到目前为止计划的执行进展（最多两句话，一句话最佳），但是要提供足够的信息让用户知道已经完成了什么，什么进展得顺利，什么进展得不顺利。
         
     **重点注意**: 
     - 一定要遵循用户之前发送的任何要求和信息。
-    - 你不需要考虑每一步骤是否缺少关键的上下文信息，交由你委派的成员智能体去考虑这些问题。
+    - 严格地按照计划将任务分配给合适的智能体，你只分配任务和给出指导，不要亲自去完成任务。
 
     {additional_instructions}
 
@@ -1116,7 +1113,7 @@ def get_orchestrator_progress_ledger_prompt(
         }},
         "instruction_or_question": {{
             "answer": string,
-            "agent_name": string (包含在{{names}}列表中，负责完成当前步骤的智能体名字)
+            "agent_name": string (负责完成当前步骤的智能体名字，一定来自于列表: "{names}")
         }},
         "progress_summary": "截止到目前，计划执行进度的总结"
 
@@ -1124,6 +1121,73 @@ def get_orchestrator_progress_ledger_prompt(
     ```
     """
     return base_prompt
+
+def get_orchestrator_progress_ledger_prompt_preset_plan():
+    """Get the orchestrator progress ledger prompt for preset plans."""
+    
+    base_prompt = """
+    
+    ## 计划执行进度
+    回顾我们正在执行的用户请求:
+
+    {task}
+
+    这是我们当前的执行计划：
+
+    {plan}
+
+    我们已经进行到了计划中的第{step_index}步，它的具体内容是： 
+
+    标题(title): {step_title}
+
+    详细内容(details): {step_details}
+
+    执行的智能体名字(agent_name): {agent_name}
+
+    为了顺利的完成用户的请求, 请回答如下问题, 包含你的思考过程:
+        
+        - is_current_step_complete:
+            - 当前的步骤是否已经完成？("True":已经完成；"False":还没有完成)。
+        - instruction_or_question: 
+            - 提供当前步骤的指导，包含必要的任务上下文信息。请提供非常详细的解决思路以指导智能体完成这个步骤。
+            - 如果当前步骤的智能体是用户，直接转述向用户的提问或者其他回复。
+        - agent_name:
+            - 只能是计划中制定执行此步骤的智能体"{agent_name}"或者用户。
+            - 如果执行任务的智能体需要和用户进行交互，比如询问用户补充相关信息，此时你应该选择用户。
+        - progress_summary:
+            - 简要地给用户总结到目前为止计划的执行进展（最多两句话，一句话最佳），但是要提供足够的信息让用户知道已经完成了什么，什么进展得顺利，什么进展得不顺利。
+        
+    **重点注意**: 
+    - 每一个步骤都至少要交给委派的智能体执行一次，你不能在没有委派的智能体没有执行过的情况下直接认为某个步骤已经完成。
+    - 一定要遵循用户之前发送的任何要求和信息。
+    - 你不需要考虑每一步骤是否缺少关键的上下文信息，交由你委派的成员智能体去考虑这些问题。
+    - 严格地按照计划将任务分配给合适的智能体，你只分配任务，不要亲自去完成任务。
+    - 你只是流程的控制者，不要参与到具体的任务执行中！你在用户和成员智能体之间扮演一个协调者的角色，不要试图亲自完成任务。
+    - 你负责传递用户的请求和成员智能体，以及将成员智能体的回复传递给用户。成员智能体的问题的和回复对象是用户，不是你！
+
+    {additional_instructions}
+
+    ## JSON输出
+    基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析. 注意！严格遵循如下的JSON schema，一定不要输出JSON对象以外的任何信息。
+
+    ```json
+    {{
+        "is_current_step_complete": {{
+            "reason": string,
+            "answer": boolean
+        }},
+        "instruction_or_question": {{
+            "answer": string,
+            "agent_name": string (负责完成当前步骤的智能体名字，一定来自于列表: "{names}")
+        }},
+        "progress_summary": "截止到目前，计划执行进度的总结"
+
+    }}
+    ```
+    """
+    
+    return base_prompt
+
 
 def validate_ledger_json(json_response: Dict[str, Any], agent_names: List[str]) -> bool:
     """Validate ledger JSON response - same for both modes."""
@@ -1145,6 +1209,47 @@ def validate_ledger_json(json_response: Dict[str, Any], agent_names: List[str]) 
     for key in [
         "is_current_step_complete",
         "need_to_replan",
+    ]:
+        if not isinstance(json_response[key], dict):
+            return False
+        if "reason" not in json_response[key] or "answer" not in json_response[key]:
+            return False
+
+    # Check instruction_or_question structure
+    if not isinstance(json_response["instruction_or_question"], dict):
+        return False
+    if (
+        "answer" not in json_response["instruction_or_question"]
+        or "agent_name" not in json_response["instruction_or_question"]
+    ):
+        return False
+    if json_response["instruction_or_question"]["agent_name"] not in agent_names:
+        return False
+
+    # Check progress_summary is a string
+    if not isinstance(json_response["progress_summary"], str):
+        return False
+
+    return True
+
+def validate_ledger_json_preset_plan(json_response: Dict[str, Any], agent_names: List[str]) -> bool:
+    """Validate ledger JSON response - same for both modes."""
+    required_keys = [
+        "is_current_step_complete",
+        "instruction_or_question",
+        "progress_summary",
+    ]
+
+    if not isinstance(json_response, dict):
+        return False
+
+    for key in required_keys:
+        if key not in json_response:
+            return False
+
+    # Check structure of boolean response objects
+    for key in [
+        "is_current_step_complete",
     ]:
         if not isinstance(json_response[key], dict):
             return False

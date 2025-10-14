@@ -86,10 +86,11 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
 
     component_type = "agent"
     component_config_schema = ElectricalDesignAgentConfig
-    component_provider_override = "magentic_ui.agents.CodingAgent"
     
     DEFAULT_DESCRIPTION = """
-    这是一个电气设计智能体，在电气设计工作流程中发挥重要作用。它依据文字形式的电气设备需求，生成满足需求的电路拓扑图和对应的电路描述。
+    
+    这是一个电气设计智能体，在电气设计工作流程中发挥重要作用。
+    它依据文字形式的电气设备需求，生成满足需求的电路拓扑图和对应的电路描述并保存对应的文件。
     """
 
     system_prompt_template = """
@@ -222,7 +223,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         if self.is_paused:
             yield Response(
                 chat_message=TextMessage(
-                    content="代码助手已暂停。",
+                    content="电气设计智能体已暂停。",
                     source=self.name,
                     metadata={"internal": "yes"},
                 )
@@ -294,7 +295,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             # If the user denies the approval, we respond with a message.
             yield Response(
                 chat_message=TextMessage(
-                    content="用户拒绝了执行代码。",
+                    content="用户拒绝了执行电气设计。",
                     source=self.name,
                     metadata={"internal": "no"},
                 ),
@@ -315,13 +316,13 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             # add to chat history
             self._chat_history.append(
                 TextMessage(
-                    content=f"生成代码时发生错误： {e}",
+                    content=f"生成电路拓扑图和对应的电路描述时发生错误： {e}",
                     source=self.name,
                 )
             )
             yield Response(
                 chat_message=TextMessage(
-                    content=f"coding智能体生成代码时发生如下错误： {e}",
+                    content=f"电气设计智能体发生了如下错误： {e}",
                     source=self.name,
                     metadata={"internal": "no"},
                 ),
