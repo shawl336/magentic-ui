@@ -613,7 +613,7 @@ export default function ChatView({
                 type: file.type,
                 content: `[FILE_UPLOADED: ${uploadedFile.relative_path}]`,
                 uploaded: true,
-                path: uploadedFile.relative_path,
+                path: uploadedFile.path,  // Use absolute path instead of relative path
                 size: uploadedFile.size,
               };
             }
@@ -639,14 +639,76 @@ export default function ChatView({
     accepted = false,
     plan?: IPlan
   ) => {
-    if (!currentRun || !activeSocketRef.current) {
-      handleError(new Error("WebSocket connection not available"));
+    if (!currentRun) {
+      handleError(new Error("No active run available"));
       return;
     }
 
-    if (activeSocketRef.current.readyState !== WebSocket.OPEN) {
-      handleError(new Error("WebSocket connection not available"));
-      return;
+    // Check if we need to establish or re-establish WebSocket connection
+    if (!activeSocketRef.current || activeSocketRef.current.readyState !== WebSocket.OPEN) {
+      console.log("WebSocket connection not available, attempting to reconnect...");
+
+      try {
+        // Try to re-establish the WebSocket connection
+        const socket = getSessionSocket(
+          session!.id!,
+          currentRun.id.toString(),
+          true,  // fresh_socket
+          false  // only_retrieve_existing_socket
+        );
+        if (!socket) {
+          handleError(new Error("Failed to establish WebSocket connection"));
+          return;
+        }
+
+        // Update the socket references
+        setActiveSocket(socket);
+        activeSocketRef.current = socket;
+
+        // Set up event handlers for the new socket
+        socket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            handleWebSocketMessage(message);
+          } catch (error) {
+            console.error("WebSocket message parsing error:", error);
+          }
+        };
+
+        socket.onclose = () => {
+          activeSocketRef.current = null;
+          setActiveSocket(null);
+        };
+
+        socket.onerror = (error) => {
+          handleError(error);
+        };
+
+        // Wait a bit for the connection to be established
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error("WebSocket connection timeout"));
+          }, 5000);
+
+          const originalOnError = socket.onerror;
+
+          socket.onopen = () => {
+            clearTimeout(timeout);
+            // Restore the original error handler
+            socket.onerror = originalOnError;
+            resolve(void 0);
+          };
+
+          // Override the error handler for connection establishment
+          socket.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error("WebSocket connection failed"));
+          };
+        });
+      } catch (error) {
+        handleError(error instanceof Error ? error : new Error("Failed to reconnect WebSocket"));
+        return;
+      }
     }
 
     try {
