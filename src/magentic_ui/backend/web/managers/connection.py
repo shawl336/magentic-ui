@@ -132,7 +132,7 @@ class WebSocketManager:
             user_settings (Settings, optional): User settings for the run
         """
         if run_id not in self._connections or run_id in self._closed_connections:
-            raise ValueError(f"No active connection for run {run_id}")
+            raise ValueError(f"会话 {run_id} 没有建立连接")
 
         # do not create a new team manager if one already exists
         if run_id not in self._team_managers:
@@ -391,7 +391,7 @@ class WebSocketManager:
                             while True:
                                 # Check if run was closed/cancelled
                                 if run_id in self._closed_connections:
-                                    raise ValueError("Run was closed")
+                                    raise ValueError("会话已结束")
 
                                 # Try to get response with short timeout
                                 try:
@@ -416,11 +416,11 @@ class WebSocketManager:
                         logger.warning(f"Input response timeout for run {run_id}")
                         await self.stop_run(
                             run_id,
-                            "Magentic-UI timed out while waiting for your input. To resume, please enter a follow-up message in the input box or you can simply type 'continue'.",
+                            "等待超时，输入新的指令可以恢复，比如: '继续'",
                         )
                         raise
                 else:
-                    raise ValueError(f"No input queue for run {run_id}")
+                    raise ValueError(f"会话 {run_id} 没有输入队列")
 
             except Exception as e:
                 logger.error(f"Error handling input for run {run_id}: {e}")

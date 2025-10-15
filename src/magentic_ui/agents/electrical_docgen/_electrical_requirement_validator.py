@@ -26,6 +26,7 @@ from autogen_core.models import (
     LLMMessage,
     AssistantMessage,
     SystemMessage,
+    UserMessage,
 )
 from autogen_agentchat.utils import remove_images
 from autogen_agentchat.agents import BaseChatAgent
@@ -179,7 +180,13 @@ class ElectricalRequirementValidator(BaseChatAgent):
                         )
                     )
                     # yeild response to manager
-                    yield Response(chat_message=TextMessage(content = self.data_response_planning["message"], source=self.name), inner_messages=[], )
+                    yield Response(chat_message=TextMessage(
+                        content = self.data_response_planning["message"],
+                        source=self.name,
+                        metadata={"direct_to_user": "yes"}
+                        ),
+                        inner_messages=[], 
+                        )
                     return
                 elif self.data_response_planning["complete"] == True:  # generate data_response successful
                     # 解析并过滤字段
@@ -194,7 +201,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                     yield Response(chat_message=TextMessage(content = response_text, source=self.name, ), inner_messages=[], )
                     return 
                 else:
-                    pass  
+                    await self._model_context.add_message(UserMessage(content="验证JSON输出失败，`complete`字段值无效，必须是'true'或'false'", source=self.name))
             except Exception as e:
                 retry_count += 1
                 logger.info(f"Error (尝试 {retry_count}/{self.max_retries}): {e}")
@@ -205,7 +212,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                 
                 else:
                     continue 
-        yield Response(chat_message=TextMessage(content = "达到最大重试次数", source=self.name, ), inner_messages=[], )    
+        yield Response(chat_message=TextMessage(content = "提取和分析需求出现了内部错误，无法执行。", source=self.name, ), inner_messages=[], )    
 
     def _validation_json(self, project_designed_generate_list: list[str], data_response: dict[str, Any]):
         for k in project_designed_generate_list:  # key can add more
@@ -378,7 +385,7 @@ async def main():
         bind_relative_dir=Path(),
         model_client_stream=True,
     )
-
+    
     def input_func(prompt: str = "") -> str:
         """终端用户输入"""
         return input(prompt)

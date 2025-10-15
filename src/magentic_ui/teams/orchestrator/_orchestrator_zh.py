@@ -93,7 +93,10 @@ class OrchestratorState(BaseGroupChatManagerState):
     message_history: List[BaseChatMessage | BaseAgentEvent] = []
     participant_topic_types: List[str] = []
     n_replans: int = 0
-
+    user_msg_handler: str = ""  # The agent name that handles the user message.
+                                # When an agent ('user_msg_handler') requests to directly talk to the user, 
+                                # the user message should be redirect to the 'user_msg_handler' not the orhesrator
+    
     def reset(self) -> None:
         self.task = ""
         self.plan_str = ""
@@ -105,6 +108,7 @@ class OrchestratorState(BaseGroupChatManagerState):
         self.message_history = []
         self.is_paused = False
         self.n_replans = 0
+        self.user_msg_handler = ''
 
     # resets most of the orchestrator's state but keeps message history
     # to allow for follow up questions
@@ -117,6 +121,7 @@ class OrchestratorState(BaseGroupChatManagerState):
         self.in_planning_mode = True
         self.is_paused = False
         self.n_replans = 0
+        self.user_msg_handler = ''
 
 
 class Orchestrator(BaseGroupChatManager):
@@ -212,6 +217,16 @@ class Orchestrator(BaseGroupChatManager):
         """
         self._state: OrchestratorState = OrchestratorState()
         self._last_browser_metadata_hash = ""
+        self._all_participants_description: str = "\n".join(
+            [
+                f"{topic_type}: {description}".strip()
+                for topic_type, description in zip(
+                    self._participant_names,
+                    self._participant_descriptions,
+                    strict=True,
+                )
+            ]
+        )
         
     def _set_team_spec(self, plan: Plan) -> None:
         """
@@ -249,7 +264,8 @@ class Orchestrator(BaseGroupChatManager):
         self._agent_execution_descriptions.append(
             "如果这一步不需要任何动作，你可以使用这个智能体，它不执行任何动作"
         )
-
+        
+        # Only incude the orchestrated agents
         self._team_description: str = "\n".join(
             [
                 f"{topic_type}: {description}".strip()
@@ -260,6 +276,7 @@ class Orchestrator(BaseGroupChatManager):
                 )
             ]
         )
+        
 
     def _get_system_message_intent_preprocess(self) -> str:
         return get_orchestrator_system_message_intent_preprocess().format(
@@ -275,14 +292,14 @@ class Orchestrator(BaseGroupChatManager):
                 self._config.sentinel_plan.enable_sentinel_steps
             ).format(
                 date_today=date_today,
-                team=self._team_description,
+                team=self._all_participants_description,
             )
         else:
             return get_orchestrator_system_message_planning(
                 self._config.sentinel_plan.enable_sentinel_steps
             ).format(
                 date_today=date_today,
-                team=self._team_description,
+                team=self._all_participants_description,
             )
 
     def _get_task_ledger_plan_prompt(self) -> str:
@@ -606,11 +623,29 @@ class Orchestrator(BaseGroupChatManager):
     ) -> None:  
         delta: List[BaseAgentEvent | BaseChatMessage] = []
         if isinstance(message, GroupChatAgentResponse):
+            # Does the participant agent request to DIRECTLY talk to the user?
+            if message.response.chat_message.metadata.get("direct_to_user", "no") == "yes":
+                self._state.user_msg_handler = message.name 
+                await self._request_next_speaker(self._user_agent_topic, ctx.cancellation_token)
+                return
+            
+            # Is this a user msg and the exclusive response to the 'user_msg_handler'?
+            if (message.name == self._user_agent_topic or message.name == "user") and self._state.user_msg_handler:
+                await self.publish_message(
+                    GroupChatAgentResponse(response=Response(chat_message=message.response.chat_message), name=message.name), 
+                    topic_id=DefaultTopicId(type=self._participant_name_to_topic_type[self._state.user_msg_handler]),
+                    cancellation_token=ctx.cancellation_token,
+                    )
+                await self._request_next_speaker(self._state.user_msg_handler, ctx.cancellation_token)
+                self._state.user_msg_handler = "" # clear the user_msg_handler
+                return
+        
             if message.response.inner_messages is not None:
                 delta.extend(message.response.inner_messages)
             self._state.message_history.append(message.response.chat_message)
             delta.append(message.response.chat_message)
         else:
+            # This logic for GroupChatTeamResponse is not used but reserved for future extension            
             self._state.message_history.extend(message.result.messages)
             delta.extend(message.result.messages)
 
@@ -1174,32 +1209,36 @@ class Orchestrator(BaseGroupChatManager):
         assert progress_ledger is not None
         # log the progress ledger
         await self._log_message_agentchat(dict_to_str(progress_ledger), internal=True)
-        # lx-todo, Preset plan currently not support replan. May add the replan support in the future.
-        if not first_step and progress_ledger.get("need_to_replan", None):
-            # Check for replans
-            need_to_replan = progress_ledger["need_to_replan"]["answer"]
-            replan_reason = progress_ledger["need_to_replan"]["reason"]
+        if not first_step:
+            
+            if self._state.plan.is_preset:
+                # lx-todo, Preset plan currently not support replan. May add the replan support in the future.
+                pass
+            else:
+                # Check for replans
+                need_to_replan = progress_ledger["need_to_replan"]["answer"]
+                replan_reason = progress_ledger["need_to_replan"]["reason"]
 
-            if need_to_replan and self._config.allow_for_replans:
-                # Replan
-                if self._config.max_replans is None:
-                    await self._replan(replan_reason, cancellation_token)
-                elif self._state.n_replans < self._config.max_replans:
-                    self._state.n_replans += 1
-                    await self._replan(replan_reason, cancellation_token)
-                    return
-                else:
+                if need_to_replan and self._config.allow_for_replans:
+                    # Replan
+                    if self._config.max_replans is None:
+                        await self._replan(replan_reason, cancellation_token)
+                    elif self._state.n_replans < self._config.max_replans:
+                        self._state.n_replans += 1
+                        await self._replan(replan_reason, cancellation_token)
+                        return
+                    else:
+                        await self._prepare_final_answer(
+                            f"我们需要重新计划，但是已达到重新计划尝试的最大次数: {replan_reason}.",
+                            cancellation_token,
+                        )
+                        return
+                elif need_to_replan:
                     await self._prepare_final_answer(
-                        f"我们需要重新计划，但是已达到重新计划尝试的最大次数: {replan_reason}.",
+                        f"当前计划无法完成任务，我们需要一个新的计划来继续。 {replan_reason}",
                         cancellation_token,
                     )
                     return
-            elif need_to_replan:
-                await self._prepare_final_answer(
-                    f"当前计划无法完成任务，我们需要一个新的计划来继续。 {replan_reason}",
-                    cancellation_token,
-                )
-                return
             if progress_ledger["is_current_step_complete"]["answer"]:
                 self._state.current_step_idx += 1
 
