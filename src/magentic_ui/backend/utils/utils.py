@@ -34,17 +34,56 @@ def construct_task(
         try:
             # Check if this is an uploaded file reference
             if file.get("uploaded") and file.get("path"):
-                # Handle uploaded file by path reference
+                # Handle uploaded file by reading the actual content
                 file_path = file.get("path", "")
-                text_parts.append(f"Attached file: {file.get('name', 'unknown.file')}")
-                attached_files.append(
-                    {
-                        "name": file.get("name", "unknown.file"),
-                        "type": file.get("type", "file"),
-                        "path": file_path,
-                        "uploaded": True,
-                    }
-                )
+                try:
+                    # Try to read the file content
+                    with open(file_path, "rb") as f:
+                        file_content = f.read()
+
+                    # Try to decode as UTF-8 text
+                    try:
+                        text_content = file_content.decode("utf-8")
+                        text_parts.append(
+                            f"Attached file: {file.get('name', 'unknown.file')}\n{text_content}"
+                        )
+                        attached_files.append(
+                            {
+                                "name": file.get("name", "unknown.file"),
+                                "type": file.get("type", "text"),
+                                "path": file_path,
+                                "uploaded": True,
+                            }
+                        )
+                    except UnicodeDecodeError:
+                        # If it's not text, encode as base64 for binary files
+                        base64_content = base64.b64encode(file_content).decode("utf-8")
+                        text_parts.append(
+                            f"Attached file: {file.get('name', 'unknown.file')} (binary file)"
+                        )
+                        # For binary files, we'll store them as base64 in the message
+                        attached_files.append(
+                            {
+                                "name": file.get("name", "unknown.file"),
+                                "type": file.get("type", "file"),
+                                "content": base64_content,
+                                "path": file_path,
+                                "uploaded": True,
+                            }
+                        )
+                except Exception as e:
+                    logger.error(f"Error reading uploaded file {file_path}: {str(e)}")
+                    text_parts.append(
+                        f"Attached file: {file.get('name', 'unknown.file')} (failed to read content)"
+                    )
+                    attached_files.append(
+                        {
+                            "name": file.get("name", "unknown.file"),
+                            "type": file.get("type", "file"),
+                            "path": file_path,
+                            "uploaded": True,
+                        }
+                    )
             elif file.get("type", "").startswith("image/"):
                 # Handle image file using from_base64 method
                 image = Image.from_base64(file["content"])
