@@ -39,6 +39,7 @@ class PlanStep(BaseModel):
     title: str
     details: str
     agent_name: str
+    additional_description: str = ""
 
 
 class SentinelPlanStep(PlanStep):
@@ -146,6 +147,7 @@ class Plan(BaseModel):
                             title=step.get("title", "Untitled Step" if not zh else "未命名的步骤"),
                             details=step.get("details", "No details provided." if not zh else "没有提供详情。"),
                             agent_name=step.get("agent_name", "agent"),
+                            additional_description=step.get("additional_description", ""),
                         )
                     )
         return cls(task=task, steps=steps) if steps else None

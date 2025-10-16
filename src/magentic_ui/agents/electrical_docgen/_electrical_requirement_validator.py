@@ -1,5 +1,6 @@
 from autogen_agentchat.agents import BaseChatAgent
 import os
+import aiofiles
 
 from typing import (
     Any,
@@ -8,8 +9,10 @@ from typing import (
     Optional,
     Sequence,
     Union,
-
+    Callable,
+    Dict,
 )
+
 from autogen_agentchat.base import Response
 from pydantic import BaseModel
 from autogen_core import CancellationToken
@@ -24,7 +27,6 @@ from autogen_core.models import (
     ChatCompletionClient,
     CreateResult,
     LLMMessage,
-    AssistantMessage,
     SystemMessage,
     UserMessage,
 )
@@ -35,16 +37,16 @@ from autogen_agentchat.messages import (
     BaseChatMessage,
     TextMessage,
     HandoffMessage,
-    StructuredMessageFactory,
 )
 
 from magentic_ui.utils import thread_to_context
 from ._prompts import (
-   ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT,
+    ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT,
 )
 from pathlib import Path
 import json
 from loguru import logger
+
 
 class ElectricalRequirementValidator(BaseChatAgent):
     """Electrical Documentation Generation Agent
@@ -57,7 +59,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
         electrialcal_docgen_agent = ElectricalRequirementValidator()
     """
 
-    component_provider_override = "magentic_ui.users._electriacal_docgen_agent"
+    component_provider_override = "magentic_ui.users._electricalrequirementvalidator"
 
     def __init__(
         self,
@@ -70,32 +72,29 @@ class ElectricalRequirementValidator(BaseChatAgent):
         max_retries: int = 2,
         *,
         description: str = """
-        
-    ## 功能概述
-    这是一个电气设计需求分析专家，具备丰富的电气设计经验，熟悉完成一个电气必须具备哪些需求参数。
-    它接受用户的电气需求，检查必要需求的完整性并引导用户补充缺失的信息，自动识别和提取轨道交通电气系统设计需求中的关键参数信息。
-    或者向它提出一个宽泛的电气设计请求，比如: "我要设计一个牵引变流器"，它将引导用户一步步补充必要的需求参数。
+        ## 功能概述
+        这是一个电气设计需求分析专家，具备丰富的电气设计经验，熟悉完成一个电气必须具备哪些需求参数。
+        它接受用户的电气需求，检查必要需求的完整性并引导用户补充缺失的信息，自动识别和提取轨道交通电气系统设计需求中的关键参数信息。
+        或者向它提出一个宽泛的电气设计请求，比如: "我要设计一个牵引变流器"，它将引导用户一步步补充必要的需求参数。
 
-    ## 核心能力
-    - **完整性校验**: 检查是否提供了全部的必要需求信息，若未提供则生成具体的补充要求
-    - **引导需求信息补全**: 根据用户的请求类型，引导并提示用户提供必要的参数信息
-    - **信息提取**: 从技术文档中自动识别关键电气参数
-    - **格式标准化**: 输出统一的JSON格式结果
+        ## 核心能力
+        - **完整性校验**: 检查是否提供了全部的必要需求信息，若未提供则生成具体的补充要求
+        - **引导需求信息补全**: 根据用户的请求类型，引导并提示用户提供必要的参数信息
+        - **信息提取**: 从技术文档中自动识别关键电气参数
+        - **格式标准化**: 输出统一的JSON格式结果
 
-    ## 适用场景
-    - 项目需求文档完整性判断
-    - 项目需求文档信息提取
-    """,
+        ## 适用场景
+        - 项目需求文档完整性判断
+        - 项目需求文档信息提取
+        """,
         system_message: (
             str | None
         ) = """
-    你是电气设备需求文档智能校验助手，专门负责轨道交通电气系统需求文档的信息提取与完整性验证。
-    专注于轨道交通电气设备需求文档的完整性判断与信息提取，服务于项目需求评审和技术规格验证。
-    请严格按照电气参数识别规则处理输入文档，输出标准化的JSON验证结果。
-    """,
+        你是电气设备需求文档智能校验助手，专门负责轨道交通电气系统需求文档的信息提取与完整性验证。
+        专注于轨道交通电气设备需求文档的完整性判断与信息提取，服务于项目需求评审和技术规格验证。
+        请严格按照电气参数识别规则处理输入文档，输出标准化的JSON验证结果。
+        """,
         model_client_stream: bool = False,
-        output_content_type: type[BaseModel] | None = None,
-        output_content_type_format: str | None = None,
     ):
         """
         Initialize the electrialcalDocGen agent.
@@ -111,6 +110,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
         self.max_retries = max_retries
         self.model_client = model_client
         self.model_client_stream = model_client_stream
+        self.message_history: List[BaseChatMessage | BaseAgentEvent] = []
         self._system_messages: List[SystemMessage] = []
         if system_message is None:
             self._system_messages = []
@@ -137,129 +137,199 @@ class ElectricalRequirementValidator(BaseChatAgent):
         """
         Process the incoming messages with the ElectrialcalDocGen agent and yield events/responses as they happen.
         """
-
-        # Add the messages to the model context.
-        await self._add_messages_to_context(
-            model_context=self._model_context,
-            messages=messages,
-        )
-        inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
         logger.debug("Enter ElectricalRequirementValidator")
-        
-        # first step: jugement is contain all requirement message
-        retry_count = 0
-        validation_lsit = [
-                        "complete",
-                        "message",
-                        "项目名称",
-                        "牵引变流器-全动车变流参数-额定输出容量",
-                        "牵引变流器-半动车变流参数-额定输出容量",
-                        "辅助变流器-额定输入电压",
-                        "辅助变流器-每列车数量",
-                        "牵引变流器寿命",
-                        ]
-        while retry_count < self.max_retries:
-            try:
-                # 调用大模型进行信息判断与提取
-                cleaned_content = await self.call_llm(
-                    system_messages = [SystemMessage(content=ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT)], 
-                    model_context = self._model_context, 
-                    cancellation_token = cancellation_token
-                )
-                # 读取json
-                self.data_response_planning = json.loads(str(cleaned_content))
-                # json格式验证
-                self._validation_json(validation_lsit, self.data_response_planning)
-                # parse data_response    
-                if self.data_response_planning["complete"] == False:
-                    # add cleaned content to model context
+
+        self.message_history.extend(messages)
+        inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
+        # manage context messages
+        context_messages = self._thread_to_context(
+            system_prompt=ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT
+        )
+
+        validation_list = [
+            "complete",
+            "message",
+            "文档类型",
+            "项目名称",
+            "直流高压等级数值",
+            "列车最大运行速度",
+            "列车最大结构速度",
+            "列车平均初始加速度",
+            "列车平均加速度",
+            "列车平均旅行速度",
+            "编组规格",
+            "重量要求",
+        ]
+        # get json response result
+        self._data_response = await self._get_json_response(
+            context_messages,
+            lambda data: self._validation_json(validation_list, data),
+            cancellation_token,
+        )
+
+        # parse data_response
+        if self._data_response["complete"] == False:
+            # yeild response to manager
+            yield Response(
+                chat_message=TextMessage(
+                    content=self._data_response["message"], source=self.name, metadata={"to_user": "yes"}
+                ),
+                inner_messages=inner_messages,
+            )
+            return
+        elif (
+            self._data_response["complete"] == True
+        ):  # generate data_response successful
+            # 解析并过滤字段
+            filtered_data = {
+                k: v
+                for k, v in self._data_response.items()
+                if k not in ["complete", "message"]
+            }
+
+            # 保存文件
+            file_name = "电气设计需求.json"
+            async with aiofiles.open(
+                self._work_root / self._work_relative_dir / file_name,
+                "w",
+                encoding="utf-8",
+            ) as f:
+                json.dump(filtered_data, f, ensure_ascii=False, indent=2)
+            response_text = f"需求提取已经全部完成，提取的字段为：{str(filtered_data)}, json 格式保存在{file_name} 文件中。"
+            yield Response(
+                chat_message=TextMessage(
+                    content=response_text,
+                    source=self.name,
+                ),
+                inner_messages=[],
+            )
+            return
+        else:
+            logger.debug("Invalid _data_response value.")
+            raise ValueError("Invalid _data_response value.")
+
+    def _thread_to_context(
+        self,
+        system_prompt: str,
+        messages: Optional[List[BaseChatMessage | BaseAgentEvent]] = None,
+    ) -> List[LLMMessage]:
+        """Convert the message thread to a context for the model."""
+        #
+        chat_messages: List[BaseChatMessage | BaseAgentEvent] = (
+            messages if messages is not None else self.message_history
+        )
+
+        context_messages: List[LLMMessage] = []
+        # add system_prompt
+        context_messages.append(SystemMessage(content=system_prompt))
+        # add context messages
+        context_messages.extend(
+            thread_to_context(
+                messages=chat_messages, agent_name=self._name, is_multimodal=False
+            )
+        )
+
+        return context_messages
+
+    async def _get_json_response(
+        self,
+        messages: List[LLMMessage],
+        validate_json: Callable[[Dict[str, Any]], bool],
+        cancellation_token: CancellationToken,
+    ) -> Dict[str, Any]:
+        """Get a JSON response from the model client.
+        Args:
+            messages (List[LLMMessage]): The messages to send to the model client.
+            validate_json (callable): A function to validate the JSON response. The function should return True if the JSON response is valid, otherwise False.
+            cancellation_token (CancellationToken): A token to cancel the request if needed.
+        """
+        retries = 0
+        exception_message = ""
+        try:
+            while retries < self.max_retries:
+                # Re-initialize model context to meet token limit quota
+                await self._model_context.clear()
+                for msg in messages:
+                    await self._model_context.add_message(msg)
+                if exception_message != "":
                     await self._model_context.add_message(
-                        AssistantMessage(
-                            content=self.data_response_planning["message"],
-                            source=self.name,
-                        )
+                        UserMessage(content=exception_message, source=self._name)
                     )
-                    # yeild response to manager
-                    yield Response(chat_message=TextMessage(
-                        content = self.data_response_planning["message"],
-                        source=self.name,
-                        metadata={"direct_to_user": "yes"}
-                        ),
-                        inner_messages=[], 
-                        )
-                    return
-                elif self.data_response_planning["complete"] == True:  # generate data_response successful
-                    # 解析并过滤字段
-                    
-                    filtered_data = {k: v for k, v in self.data_response_planning.items() if k not in ['complete', 'message']}
+                token_limited_messages = await self._model_context.get_messages()
 
-                    # 保存文件
-                    file_name = '电气设计需求.json'
-                    with open(self._work_root / self._work_relative_dir / file_name, 'w', encoding='utf-8') as f:
-                        json.dump(filtered_data, f, ensure_ascii=False, indent=2) 
-                    response_text = f"提取的字段为：{str(filtered_data)}, json 格式保存在 {self._work_root / self._work_relative_dir} 文件夹下的 {file_name} 文件中。"
-                    yield Response(chat_message=TextMessage(content = response_text, source=self.name, ), inner_messages=[], )
-                    return 
-                else:
-                    await self._model_context.add_message(UserMessage(content="验证JSON输出失败，`complete`字段值无效，必须是'true'或'false'", source=self.name))
-            except Exception as e:
-                retry_count += 1
-                logger.info(f"Error (尝试 {retry_count}/{self.max_retries}): {e}")
-                if retry_count >= self.max_retries:
-                    logger.info("达到最大重试次数")
-                    # default value
-                    break
-                
-                else:
-                    continue 
-        yield Response(chat_message=TextMessage(content = "提取和分析需求出现了内部错误，无法执行。", source=self.name, ), inner_messages=[], )    
+                response = await self.model_client.create(
+                    token_limited_messages,
+                    json_output=(
+                        True if self.model_client.model_info["json_output"] else False
+                    ),
+                    cancellation_token=cancellation_token,
+                )
 
-    def _validation_json(self, project_designed_generate_list: list[str], data_response: dict[str, Any]):
-        for k in project_designed_generate_list:  # key can add more
-            if k not in data_response:
-                raise ValueError("JSON 缺少必需字段")
-            val = data_response.get(k)
-            if k == "complete":
-                if isinstance(val, str):
-                    val = val.lower()
-                    if val == "true":
-                        data_response[k] = True
-                    elif val == "false":
-                        data_response[k] = False
+                assert isinstance(response.content, str)
+
+                try:
+                    response.content = self._clean_response_content(response.content)
+                    json_response = json.loads(response.content)
+                    # Use the validate_json function to check the response
+                    if validate_json(json_response):
+                        return json_response
                     else:
-                        data_response[k] = None
-            else:
-                if val is not None and not isinstance(val, str):
-                    data_response[k] = None
-    async def call_llm(self, system_messages: List[SystemMessage], model_context: ChatCompletionContext , cancellation_token: CancellationToken) -> str:
-        model_result = None
-        async for inference_output in self._call_llm(
-            model_client=self.model_client,
-            model_client_stream=self.model_client_stream,
-            system_messages=system_messages,
-            model_context=model_context,
-            agent_name=self.name,
-            cancellation_token=cancellation_token,
-            output_content_type=None,
-        ):
-            if isinstance(inference_output, CreateResult):
-                model_result = inference_output
-        assert model_result is not None, "No model result was produced."
+                        exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
+                        logger.debug(
+                            f"JSON响应的验证失败: {json_response}, 正在重试 ({retries}/{self.max_retries})"
+                        )
+                except json.JSONDecodeError as e:
+                    # json_response = extract_json_from_string(response.content)
+                    # if json_response is not None:
+                    #     if validate_json(json_response):
+                    #         return json_response
+                    #     else:
+                    #         exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
+                    # else:
+                    #     exception_message = f"JSON响应的解析失败，正在重试。你必须从响应中返回一个有效JSON对象。 错误: {e}"
+                    logger.debug(
+                        f"JSON响应的解析失败，正在重试 ({retries}/{self.max_retries})"
+                    )
+                retries += 1
+            logger.debug(
+                "多次尝试后，无法获得有效的JSON响应",
+                internal=False,
+            )
+            raise ValueError("多次尝试后，无法获得有效的JSON响应")
+        except Exception as e:
+            logger.debug(f"Orchestrator遇到错误: {e}", internal=False)
+            raise
 
-        response_content = str(model_result.content).strip()
-        # check response_content is null
-        if not response_content:
-            raise ValueError("Empty response from model")
-        # clean response content
-        cleaned_content = self._clean_response_content(response_content)
-        #logger.info(# debug
-        # f"Raw response: '{response_content}', Cleaned content: '{cleaned_content}'"
-        #)  
-        return cleaned_content
-    
+    def _validation_json(
+        self, project_designed_generate_list: list[str], data_response: dict[str, Any]
+    ) -> bool:
+        """验证JSON响应，返回验证结果"""
+        try:
+            for k in project_designed_generate_list:
+                if k not in data_response:
+                    return False
+                val = data_response.get(k)
+                if k == "complete":
+                    if isinstance(val, str):
+                        val = val.lower()
+                        if val == "true":
+                            data_response[k] = True
+                        elif val == "false":
+                            data_response[k] = False
+                        else:
+                            data_response[k] = None
+                else:
+                    if val is not None and not isinstance(val, str):
+                        data_response[k] = None
+            return True
+        except Exception:
+            return False
+
     async def on_reset(self, cancellation_token: CancellationToken) -> None:
         """Reset the assistant agent to its initialization state."""
         await self._model_context.clear()
+        self.message_history = []
+
     def _clean_response_content(self, content: str) -> str:
         content = content.strip()
         # Remove thinking markers if present
@@ -385,7 +455,7 @@ async def main():
         bind_relative_dir=Path(),
         model_client_stream=True,
     )
-    
+
     def input_func(prompt: str = "") -> str:
         """终端用户输入"""
         return input(prompt)
@@ -400,12 +470,13 @@ async def main():
 
     # Create a team with the primary and critic agents. primary_agent, critic_agent,
     team = RoundRobinGroupChat(
-        [electrical_requirement_validator, critic_agent], termination_condition=text_termination
+        [electrical_requirement_validator, critic_agent],
+        termination_condition=text_termination,
     )
     # Use `asyncio.run(...)` when running in a script.
     from autogen_agentchat.ui import Console
-    task = """
 
+    task = """
 1概述
 1.1用途
 本技术规范描述了宁波至慈溪市域动车组项目牵引变流器技术要求，同时也是其订货技术条件。
@@ -466,14 +537,16 @@ async def main():
 稳态输出电压允差	± 8 %	额定负载
 额定单相输出电压	420Vrms±5%	
 输出额定频率	78Hz	
-       
-"""
-# 牵引变流器寿命100年
-# 宁波至慈溪市域动车组项目
-# 牵引变流器采购技术规范
-# 每列车数量	4		
-    await Console(team.run_stream(task=task))
+- 列车最大运行速度： 160km/h
+- 列车最大结构速度： 80km/h
+- 列车平均初始加速度： (0—120km/h)≥0.5m/s_2
+- 列车平均加速度： (0—120km/h)≥0.5m/s_2
+- 列车平均旅行速度： 100km/h
     
+"""
+    # - 编组规格： 4M2T
+    # - 重量要求： 全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%
+    await Console(team.run_stream(task=task))
 
 
 if __name__ == "__main__":

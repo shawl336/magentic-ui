@@ -624,18 +624,18 @@ class Orchestrator(BaseGroupChatManager):
         delta: List[BaseAgentEvent | BaseChatMessage] = []
         if isinstance(message, GroupChatAgentResponse):
             # Does the participant agent request to DIRECTLY talk to the user?
-            if message.response.chat_message.metadata.get("direct_to_user", "no") == "yes":
+            if message.response.chat_message.metadata.get("to_user", "no") == "yes":
                 self._state.user_msg_handler = message.name 
                 await self._request_next_speaker(self._user_agent_topic, ctx.cancellation_token)
                 return
             
             # Is this a user msg and the exclusive response to the 'user_msg_handler'?
             if (message.name == self._user_agent_topic or message.name == "user") and self._state.user_msg_handler:
-                await self.publish_message(
-                    GroupChatAgentResponse(response=Response(chat_message=message.response.chat_message), name=message.name), 
-                    topic_id=DefaultTopicId(type=self._participant_name_to_topic_type[self._state.user_msg_handler]),
-                    cancellation_token=ctx.cancellation_token,
-                    )
+                # await self.publish_message(
+                #     GroupChatAgentResponse(response=Response(chat_message=message.response.chat_message), name=message.name), 
+                #     topic_id=DefaultTopicId(type=self._participant_name_to_topic_type[self._state.user_msg_handler]),
+                #     cancellation_token=ctx.cancellation_token,
+                #     )
                 await self._request_next_speaker(self._state.user_msg_handler, ctx.cancellation_token)
                 self._state.user_msg_handler = "" # clear the user_msg_handler
                 return
@@ -1172,6 +1172,16 @@ class Orchestrator(BaseGroupChatManager):
             # add the ledger message to the message thread internally
             self._state.message_history.append(ledger_message)
             await self._log_message_agentchat(ledger_message.content, internal=True)
+            
+            # # Is this the first step of a preset plan?
+            # # If it is, the directly handle the user initial request to the 1st-step agent in the preset plan,
+            # # to avoid the orchestrator make unexpected preparation e.g. ask the user to supply more context.
+            # if self._state.plan and self._state.plan.is_preset:
+            #     # Get the 1st-step agent name
+            #     first_step_agent_name = self._state.plan.steps[0].agent_name
+            #     # Directly handle the user initial request to the 1st-step agent in the preset plan.
+            #     await self._request_next_speaker(first_step_agent_name, cancellation_token)
+            #     return
 
         assert self._state.plan is not None
         if self._state.current_step_idx >= len(self._state.plan) or (
@@ -1210,7 +1220,6 @@ class Orchestrator(BaseGroupChatManager):
         # log the progress ledger
         await self._log_message_agentchat(dict_to_str(progress_ledger), internal=True)
         if not first_step:
-            
             if self._state.plan.is_preset:
                 # lx-todo, Preset plan currently not support replan. May add the replan support in the future.
                 pass

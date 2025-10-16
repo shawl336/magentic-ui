@@ -37,6 +37,7 @@ from autogen_agentchat.messages import (
 )
 from autogen_core import FunctionCall
 from autogen_core.models import (
+    LLMMessage,
     FunctionExecutionResult,
     AssistantMessage,
     FunctionExecutionResultMessage,
@@ -247,14 +248,8 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
 
         monitor_pause_task = asyncio.create_task(monitor_pause())
 
-        system_prompt = self.system_prompt_template.format(
-            name=self.name,
-            date_today=datetime.now().strftime("%Y-%m-%d")
-        )
-
         try:
             async for msg in self._generate_circuit_diagram(
-                system_prompt, 
                 inner_messages, 
                 messages, 
                 self.name, 
@@ -340,7 +335,6 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     
     async def _generate_circuit_diagram(
         self,
-        system_prompt: str,
         inner_messages: List[BaseAgentEvent | BaseChatMessage],
         thread: Sequence[BaseChatMessage | BaseAgentEvent],
         agent_name: str,
@@ -355,7 +349,6 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
 
         When the cancellation token is set, the execution will stop.
         Args:
-            system_prompt (str): The system prompt to guide the model.
             thread (Sequence[BaseChatMessage]): The thread of messages to use as context.
             agent_name (str): The name of the agent.
             model_client (ChatCompletionClient): The model client to use for cod    # extract code blocks from the LLM's response
@@ -374,24 +367,22 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         current_thread = (
             list(thread) + list(inner_messages)
         )
-        context = thread_to_context(
-            current_thread,
-            agent_name,
-            is_multimodal=model_client.model_info["vision"],
+        context = self._thread_to_context(
+            messages=current_thread
         )
         # the delegator only take as input the last message to analyze
         # the historical messages are ignored
-        last_message = context[-1]
-        delegator_context = [SystemMessage(content=system_prompt), last_message]
+        # last_message = context[-1]
+        # delegator_context = [SystemMessage(content=system_prompt), last_message]
 
         # Re-initialize model context to meet token limit quota
         try:
             await self._model_context.clear()
-            for msg in delegator_context:
+            for msg in context:
                 await self._model_context.add_message(msg)
             token_limited_context = await self._model_context.get_messages()
         except Exception:
-            token_limited_context = delegator_context
+            token_limited_context = context
         
         
         # preprocess the user request and extract coding tool parameters
@@ -422,27 +413,30 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                     tool_call_result_text = tool_call_results[0].content
                     # send the download notification to the client, the type "auto_download_file" is used to identify the download notification
                     if not tool_call_results[0].is_error:
+                        self._chat_history.append(TextMessage(content=tool_call_result_text, source=agent_name))
                         yield TextMessage(
                             content = tool_call_result_text,
                             source=agent_name,
-                            metadata={"type": "progress_message"},
+                            metadata={"finished": "yes"},
                         )   
                     
-                    token_limited_context = await self._model_context.get_messages()
-                    delegated_result = await self._model_client.create(
-                        token_limited_context,
-                        json_output=True
-                        if self._model_client.model_info["json_output"]
-                        else False,
-                        cancellation_token=cancellation_token
-                    )  
+                    ''' Temporarily using the toolcall result as the response '''
+                    # token_limited_context = await self._model_context.get_messages()
+                    # delegated_result = await self._model_client.create(
+                    #     token_limited_context,
+                    #     json_output=True
+                    #     if self._model_client.model_info["json_output"]
+                    #     else False,
+                    #     cancellation_token=cancellation_token
+                    # )  
                     
-                    assert isinstance(delegated_result.content, str)
-                    yield TextMessage(
-                        content = delegated_result.content,
-                        source=agent_name,
-                        metadata={"finished": "yes"},
-                    )   
+                    # assert isinstance(delegated_result.content, str)
+                    # yield TextMessage(
+                    #     content = delegated_result.content,
+                    #     source=agent_name,
+                    #     metadata={"finished": "yes"},
+                    # )   
+                    
                     return
                 except AssertionError:
                     logger.debug(f"Electrical Design Agent: {delegated_result.content}")
@@ -500,7 +494,40 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             )
         except Exception as e:
             return FunctionExecutionResult(call_id=call.id, content=str(e), is_error=True, name=tool.name)
+    
+    def _thread_to_context(
+        self, messages: Optional[List[BaseChatMessage | BaseAgentEvent]] = None,
+    ) -> List[LLMMessage]:
+        """Convert the message thread to a context for the model."""
+        chat_messages: List[BaseChatMessage | BaseAgentEvent] = (
+            messages if messages is not None else self._chat_history
+        )
         
+        system_prompt = self.system_prompt_template.format(
+            name=self.name,
+            date_today=datetime.now().strftime("%Y-%m-%d")
+        )
+        context_messages: List[LLMMessage] = []
+        context_messages.append(
+            SystemMessage(
+                content=system_prompt
+                )
+        )
+        if self._model_client.model_info["vision"]:
+            context_messages.extend(
+                thread_to_context(
+                    messages=chat_messages, agent_name=self._name, is_multimodal=True
+                )
+            )
+        else:
+            context_messages.extend(
+                thread_to_context(
+                    messages=chat_messages, agent_name=self._name, is_multimodal=False
+                )
+            )
+
+        return context_messages
+    
     async def notify_to_download(
         self,
         file_and_directory_list: Annotated[List[str], "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
@@ -542,10 +569,14 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                 "target_directory": target_directory
             }
         """
-        shutil.copy("circuit_diagram.png", self._work_root / self._work_relative_dir / "电路拓扑图.png")
-        # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.png"], None)
+        try:
+            cwd = os.getcwd()
+            shutil.copy(os.path.join(cwd, "circuit_foo.jpg"), self._work_root / self._work_relative_dir / "电路拓扑图.jpg")
+        except Exception:
+            return "生成电路拓扑图失败"  
+        # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.jpg"], None)
         
-        return "电路拓扑图和对应的电路描述已生成"
+        return "电路拓扑图和对应的电路描述已生成，保存在\"电路拓扑图.jpg\"文件中。"
 
     def _to_config(self) -> ElectricalDesignAgentConfig:
         """Convert the agent's state to a configuration object."""
