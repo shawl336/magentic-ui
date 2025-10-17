@@ -160,55 +160,65 @@ class ElectricalRequirementValidator(BaseChatAgent):
             "编组规格",
             "重量要求",
         ]
-        # get json response result
-        self._data_response = await self._get_json_response(
-            context_messages,
-            lambda data: self._validation_json(validation_list, data),
-            cancellation_token,
-        )
-
-        # parse data_response
-        if self._data_response["complete"] == False:
-            # yeild response to manager
-            yield Response(
-                chat_message=TextMessage(
-                    content=self._data_response["message"], source=self.name, metadata={"to_user": "yes"}
-                ),
-                inner_messages=inner_messages,
+        
+        try:
+            # get json response result
+            self._data_response = await self._get_json_response(
+                context_messages,
+                lambda data: self._validation_json(validation_list, data),
+                cancellation_token,
             )
-            return
-        elif (
-            self._data_response["complete"] == True
-        ):  # generate data_response successful
-            # 解析并过滤字段
-            filtered_data = {
-                k: v
-                for k, v in self._data_response.items()
-                if k not in ["complete", "message"]
-            }
 
-            # 保存文件            
-            file_name = "电气设计需求.json"
-            async with aiofiles.open(
-                self._work_root / self._work_relative_dir / file_name,
-                "w",
-                encoding="utf-8",
-            ) as f:
-                json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
-                await f.write(json_str)
-                
-            response_text = f"需求提取已经全部完成，提取的字段为：{str(filtered_data)}, json 格式保存在{file_name} 文件中。"
+            # parse data_response
+            if self._data_response["complete"] == False:
+                # yeild response to manager
+                yield Response(
+                    chat_message=TextMessage(
+                        content=self._data_response["message"], source=self.name, metadata={"to_user": "yes"}
+                    ),
+                    inner_messages=inner_messages,
+                )
+                return
+            elif (
+                self._data_response["complete"] == True
+            ):  # generate data_response successful
+                # 解析并过滤字段
+                filtered_data = {
+                    k: v
+                    for k, v in self._data_response.items()
+                    if k not in ["complete", "message"]
+                }
+
+                # 保存文件            
+                file_name = "电气设计需求.json"
+                async with aiofiles.open(
+                    self._work_root / self._work_relative_dir / file_name,
+                    "w",
+                    encoding="utf-8",
+                ) as f:
+                    json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
+                    await f.write(json_str)
+                    
+                response_text = f"需求提取已经全部完成，提取的字段为：{str(filtered_data)}, json 格式保存在{file_name} 文件中。"
+                yield Response(
+                    chat_message=TextMessage(
+                        content=response_text,
+                        source=self.name,
+                    ),
+                    inner_messages=[],
+                )
+                return
+            else:
+                logger.debug("Invalid _data_response value.")
+                raise ValueError("无效的返回格式")
+        except Exception as e:
             yield Response(
                 chat_message=TextMessage(
-                    content=response_text,
+                    content=f"电气需求提取失败: {e}",
                     source=self.name,
                 ),
                 inner_messages=[],
             )
-            return
-        else:
-            logger.debug("Invalid _data_response value.")
-            raise ValueError("Invalid _data_response value.")
 
     def _thread_to_context(
         self,
@@ -276,7 +286,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                     if validate_json(json_response):
                         return json_response
                     else:
-                        exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
+                        exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象且必须包含所有要求的字段。"
                         logger.debug(
                             f"JSON响应的验证失败: {json_response}, 正在重试 ({retries}/{self.max_retries})"
                         )

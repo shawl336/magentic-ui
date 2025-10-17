@@ -274,15 +274,6 @@ async def get_task_team(
         assert file_surfer is not None
         team_participants.extend([coder_agent, file_surfer])
     team_participants.extend(mcp_agents)
-    # add electridocgen agent
-    # TODO: add electradocgen model_client
-    electrical_gendoc = ElectrialcalDocGenAgent(
-        agent_class2name[ElectrialcalDocGenAgent],
-        model_client_file_surfer,
-        work_dir=paths.internal_run_dir,
-        bind_dir=paths.external_run_dir,
-        model_client_stream = True,
-    )
     
     # coding agent is different from coder agent, it is specifically for coding and currently no execution is involved
     model_client_coder = get_model_client(magentic_ui_config.model_client_configs.coding_agent)
@@ -290,8 +281,8 @@ async def get_task_team(
     # These work/bind root dir are designed to make the agents see the files in the same RELATIVE paths
     # in both the local filesystem and the docker container
     # {appdir}/files/user/{user_id}/{session_id}/{run_id}, NOTE currently {session_id} == {run_id}
-    coding_work_root = paths.internal_root_dir # path.internal_root_dir + path.run_suffix
-    work_relative_dir = Path(paths.run_suffix)
+    run_root = paths.internal_run_dir # path.internal_root_dir + path.run_suffix
+    work_relative_dir = Path()
     # /data/gemini-cli
     coding_bind_root = Path(os.environ["CODING_WORKSPACE_IN_DOCKER"]) 
     coding_bind_relative_dir = Path(paths.run_suffix) # coding_bind_root + path.run_suffix
@@ -300,7 +291,7 @@ async def get_task_team(
         name=agent_class2name[CodingDelegatorAgent],
         model_client=model_client_coder,
         coding_provider="gemini_cli",
-        work_root=coding_work_root,
+        work_root=run_root,
         work_relative_dir=work_relative_dir,
         bind_root=coding_bind_root,
         bind_relative_dir=coding_bind_relative_dir,
@@ -309,10 +300,22 @@ async def get_task_team(
         approval_guard=approval_guard,
     )
     
+    # add electridocgen agent
+    # TODO: add electradocgen model_client
+    electrical_gendoc = ElectrialcalDocGenAgent(
+        agent_class2name[ElectrialcalDocGenAgent],
+        model_client_file_surfer,
+        work_root=run_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=Path(),
+        bind_relative_dir=Path(),
+        model_client_stream = True,
+    )
+    
     electrical_design_dummy_agent = ElectricalDesignAgent(
         name=agent_class2name[ElectricalDesignAgent],
         model_client=model_client_file_surfer,
-        work_root=coding_work_root,
+        work_root=run_root,
         work_relative_dir=work_relative_dir,
         bind_root=coding_bind_root,
         bind_relative_dir=coding_bind_relative_dir,
@@ -324,7 +327,7 @@ async def get_task_team(
     electrical_requirement_validator = ElectricalRequirementValidator(
         name=agent_class2name[ElectricalRequirementValidator],
         model_client=model_client_file_surfer,
-        work_root=paths.internal_root_dir,
+        work_root=run_root,
         work_relative_dir=work_relative_dir,
         bind_root=Path(),
         bind_relative_dir=Path(),

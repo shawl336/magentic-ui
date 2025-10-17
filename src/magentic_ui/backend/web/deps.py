@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from ..database import DatabaseManager
 from .config import settings
 from .managers.connection import WebSocketManager
+from magentic_ui.docker_manager import DockerManager
 
 from loguru import logger
 # logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ from loguru import logger
 _db_manager: Optional[DatabaseManager] = None
 _websocket_manager: Optional[WebSocketManager] = None
 _global_tools: List[Any] = []
+_docx_editor_manager: Optional[DockerManager] = None
 # Context manager for database sessions
 
 
@@ -60,6 +62,15 @@ async def get_websocket_manager() -> WebSocketManager:
     return _websocket_manager
 
 
+def get_docx_editor_manager() -> DockerManager:
+    """Dependency provider for docx editor manager"""
+    if not _docx_editor_manager:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Docx editor manager not initialized",
+        )
+    return _docx_editor_manager
+
 # Manager initialization and cleanup
 
 
@@ -93,6 +104,33 @@ async def init_managers(
             run_without_docker=run_without_docker,
         )
         logger.info("Connection manager initialized")
+        
+        # Initialize docker manager
+        _docx_editor_manager = DockerManager(
+            image="onlyoffice/documentserver",
+            container_name="docx_editor",
+            volumes={
+                "/app/onlyoffice/DocumentServer/logs": {"bind": "/var/log/onlyoffice", "mode": "rw"},
+                "/app/onlyoffice/DocumentServer/data": {"bind": "/var/www/onlyoffice/Data", "mode": "rw"},
+                "/app/onlyoffice/DocumentServer/lib": {"bind": "/var/lib/onlyoffice", "mode": "rw"},
+                "/app/onlyoffice/DocumentServer/db": {"bind": "/var/lib/postgresql", "mode": "rw"},
+            },
+            ports={"80/tcp": "8081"},
+            detach=True,
+            auto_remove=True,
+            stop_container=True,
+            tty=True,
+            restart_policy={"Name": "on-failure", "MaximumRetryCount": 5},
+        )
+        
+        try:
+            await _docx_editor_manager.start()
+            logger.info("Docker manager initialized")
+        except Exception as e:
+            logger.error(f"Error starting docx editor manager: {str(e)}")
+            _docx_editor_manager = None
+            logger.error("Docker manager initialization failed")
+            raise e
 
     except Exception as e:
         logger.error(f"Failed to initialize managers: {str(e)}")
@@ -101,7 +139,7 @@ async def init_managers(
 
 async def cleanup_managers() -> None:
     """Cleanup and shutdown all manager instances"""
-    global _db_manager, _websocket_manager, _team_manager
+    global _db_manager, _websocket_manager, _team_manager, _docx_editor_manager
 
     logger.info("Cleaning up managers...")
 

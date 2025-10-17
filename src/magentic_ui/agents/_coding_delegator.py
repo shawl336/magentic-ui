@@ -378,14 +378,19 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 delete_tmp_files=True,
                 init_command="bash -c 'source /data/gemini-cli/run.sh'",
                 detach=True,
-                tty=True,
                 auto_remove=True,
                 stop_container=True,
+                tty=True,
+                restart_policy={"Name": "on-failure", "MaximumRetryCount": 5},
             )
         
-        # lx-todo, makr the start status of the code manager (docker container)
         if self._code_manager:
-            await self._code_manager.start()
+            try:
+                await self._code_manager.start()
+            except Exception as e:
+                logger.error(f"Error starting code manager: {e}")
+                self._did_lazy_init = False
+
                 
         self._did_lazy_init = True
 
@@ -437,6 +442,15 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
         """Handle incoming messages and yield responses as a stream. Append the request to agents chat history."""
         await self.lazy_init()
+        if not self._did_lazy_init:
+            yield Response(
+                chat_message=TextMessage(
+                    content="代码生成器依赖项初始化失败，无法生成代码",
+                    source=self.name,
+                    metadata={"internal": "yes"},
+                )
+            )
+            return
 
         if self.is_paused:
             yield Response(

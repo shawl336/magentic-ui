@@ -19,24 +19,24 @@ PRESET_PLANS: str = """
         },
         {
           "id": "2"
-          "title": "电路图生成",
-          "details": "基于第1步整理好的需求文档，生成对应的电路拓扑图以及电路描述。输入是需求文档。",
-          "agent_name": "electrical_design_agent",
-          "additional_description": "不直接输出电路图内容，而是以文档的形式保存在一个路径。"
-        },
-        {
-          "id": "3"
           "title": "生成技术规格说明书",
           "details": "基于第1步整理好的需求文档，生成技术规格书并归档。",
           "agent_name": "documentation_analysis_and_generation_agent",
           "additional_description": "不直接输出技术规格说明书内容，而是以文档的形式保存在一个路径。"
         },
         {
+          "id": "3"
+          "title": "电路图生成",
+          "details": "基于第1步整理好的需求文档，生成对应的电路拓扑图、电路描述。输入是需求文档。",
+          "agent_name": "electrical_design_agent",
+          "additional_description": "输出电路描述，但是不直接输出电路图的内容，而是以文件的形式保存在一个路径。图片格式的电路用来预览审阅，除了图片格式的电路拓扑图还会生成CAD软件可以查看编辑的dwg格式电路文件。"
+        },
+        {
           "id": "4"
           "title": "人工审查电路图",
-          "details": "将第2步生成的电路图和电路描述发送给用户，打开的编辑审阅工具让用户进行审查和修改，等待用户通知审查完成，最后更新并保存用户的审查修改后的电路图。输入是电路拓扑图以及电路描述。",
+          "details": "打开CAD工具，让用户审查和修改电路图，等待用户通知审查完成。",
           "agent_name": "user_proxy",
-          "additional_description": ""
+          "additional_description": "将第2步生成的dwg格式的电路图谱文件发送给用户，自动打开CAD工具让用户进行审查和修改，等待用户通知审查完成，最后更新并保存用户的审查修改后的电路图。输入是dwg格式的电路文件。"
         },
         {
           "id": "5"

@@ -120,8 +120,10 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         self,
         name: str,
         model_client: ChatCompletionClient,
-        work_dir: Path | str = "/workspace",
-        bind_dir: Path | str | None = None,
+        work_root: Path,
+        work_relative_dir: Path,
+        bind_root: Path,
+        bind_relative_dir: Path,
         max_retries: int = 3,
         *,
         description: str = f"""
@@ -153,8 +155,10 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         Args:
             name: Agent name
             model_client: Chat completion client
-            work_dir: Working directory path
-            bind_dir: Bind directory path, optional
+            work_root: Working root directory
+            work_relative_dir: Working relative directory
+            bind_root: Bind root directory
+            bind_relative_dir: Bind relative directory
             max_retries: Maximum retry attempts
             description: Agent description
             system_message: System message
@@ -162,8 +166,10 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
             model_context: Model context, optional
         """
         super().__init__(name=name, description=description)
-        self.work_dir = work_dir
-        self.bind_dir = bind_dir
+        self._work_root = work_root
+        self._work_relative_dir = work_relative_dir
+        self._bind_root = bind_root
+        self._bind_relative_dir = bind_relative_dir
         self.max_retries = max_retries
         self.model_client = model_client
         self.model_client_stream = model_client_stream
@@ -282,7 +288,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                         self.current_dir_os_path,
                         "docx_template/0_系统部件方案设计说明书.docx",
                     ),
-                    str(self.work_dir),
+                    str(self._work_root / self._work_relative_dir),
                 )
                 # TODO  optimize filename
                 output_filename = f"{self.data_response_planning.get('project_name', "未命名")}{self.data_response_planning.get('document_type', None)}.docx"
@@ -301,7 +307,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                         self.current_dir_os_path,
                         "docx_template/1_城轨_系统技术规格说明书.docx",
                     ),
-                    str(self.work_dir),
+                    str(self._work_root / self._work_relative_dir),
                 )
                 output_filename = f"{self.data_response_planning.get('project_name', "未命名")}{self.data_response_planning.get('document_type', None)}.docx"
                 self.generator.gen_docx(self._variable_dict, output_filename)
@@ -322,7 +328,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
             # step 3: yeild response to manager
             from docx import Document
 
-            docx_obj = Document(os.path.join(str(self.work_dir), output_filename))
+            docx_obj = Document(os.path.join(str(self._work_root / self._work_relative_dir), output_filename))
             docx_text = "\n".join([paragraph.text for paragraph in docx_obj.paragraphs])
 
             # yeild generate docx response to managetr
@@ -639,7 +645,10 @@ async def main():
     electrial_gendoc = ElectrialcalDocGenAgent(
         "electrial_gendoc",
         model_client,
-        work_dir=current_dir_os_path,
+        work_root=Path(current_dir_os_path),
+        work_relative_dir=Path(),
+        bind_root=Path(),
+        bind_relative_dir=Path(),
         model_client_stream=True,
     )
 

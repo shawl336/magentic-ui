@@ -166,6 +166,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
                 
         except Exception as e:
             logger.error(f"Error starting container {self.container_name}: {e}")
+            raise RuntimeError(f"Error starting container {self.container_name}: {e}") from e
         
     async def _get_docker_client(self) -> docker.DockerClient:
         """Get or create Docker client."""
