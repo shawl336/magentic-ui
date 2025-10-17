@@ -26,27 +26,34 @@ PRESET_PLANS: str = """
         },
         {
           "id": "3"
+          "title": "生成技术规格说明书",
+          "details": "基于第1步整理好的需求文档，生成技术规格书并归档。",
+          "agent_name": "documentation_analysis_and_generation_agent",
+          "additional_description": "不直接输出技术规格说明书内容，而是以文档的形式保存在一个路径。"
+        },
+        {
+          "id": "4"
           "title": "人工审查电路图",
           "details": "将第2步生成的电路图和电路描述发送给用户，打开的编辑审阅工具让用户进行审查和修改，等待用户通知审查完成，最后更新并保存用户的审查修改后的电路图。输入是电路拓扑图以及电路描述。",
           "agent_name": "user_proxy",
           "additional_description": ""
         },
         {
-          "id": "3"
+          "id": "5"
           "title": "计算电气参数",
           "details": "计算电路图的电气参数，用以帮助电气物料选型",
           "agent_name": "user_proxy",
           "additional_description": ""
         },
         {
-          "id": "4"
+          "id": "6"
           "title": "电气物料选型",
           "details": "基于第3步生成的电气参数，选择合适的物料。输入是电气参数计算结果，输出符合参数区间的电气物料表格，同时以文档的形式保存在一个路径。",
           "agent_name": "user_proxy",
           "additional_description": ""
         },
         {
-          "id": "5"
+          "id": "7"
           "title": "人工仿真",
           "details": "将之前各个步骤生成的物料参数发送给用户，打开仿真工具进行仿真，等待用户通知仿真任务完成。",
           "agent_name": "user_proxy",

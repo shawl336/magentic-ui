@@ -7,7 +7,15 @@ from autogen_agentchat.base import ChatAgent, Team
 from autogen_core import ComponentModel
 from autogen_core.models import ChatCompletionClient
 
-from .agents import USER_PROXY_DESCRIPTION, CoderAgent, FileSurfer, WebSurfer, CodingDelegatorAgent
+from .agents import (
+    USER_PROXY_DESCRIPTION, 
+    CoderAgent, 
+    FileSurfer, 
+    WebSurfer, 
+    CodingDelegatorAgent,
+    ElectricalDesignAgent,
+    ElectricalRequirementValidator,
+)
 from .agents import ElectrialcalDocGenAgent
 from .agents.mcp import McpAgent
 from .agents.users import DummyUserProxy, MetadataUserProxy
@@ -18,9 +26,6 @@ from .approval_guard import (
     ApprovalGuardContext,
     BaseApprovalGuard,
 )
-
-from .agents._electrical_design_dummy import ElectricalDesignAgent
-from .agents.electrical_docgen._electrical_requirement_validator import ElectricalRequirementValidator
 
 from .input_func import InputFuncType, make_agentchat_input_func
 from .learning.memory_provider import MemoryControllerProvider

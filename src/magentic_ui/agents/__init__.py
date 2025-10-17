@@ -4,6 +4,8 @@ from ._user_proxy import USER_PROXY_DESCRIPTION
 from .file_surfer import FileSurfer
 from .electrical_docgen import ElectrialcalDocGenAgent
 from ._coding_delegator import CodingDelegatorAgent
+from .electrical_docgen import ElectricalRequirementValidator
+from ._electrical_design_dummy import ElectricalDesignAgent
 
 __all__ = [
     "WebSurfer",
@@ -12,5 +14,7 @@ __all__ = [
     "USER_PROXY_DESCRIPTION",
     "FileSurfer",
     "ElectrialcalDocGenAgent",
-    "CodingDelegatorAgent"
+    "CodingDelegatorAgent",
+    "ElectricalRequirementValidator",
+    "ElectricalDesignAgent"
 ]

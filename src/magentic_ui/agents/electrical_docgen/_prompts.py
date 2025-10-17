@@ -107,7 +107,8 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 {{
   "complete": true,
   "message": "信息完善",
-  "document_type": "技术规格说明书"
+  "document_type": "技术规格说明书",
+  "project_name": "根据用户提供的信息填写"
 }}
 
 **情况2：信息不完整**
@@ -118,7 +119,8 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 {{
   "complete": false,
   "message": "<动态缺失模板>",
-  "document_type": ""
+  "document_type": "方案设计说明书" | "技术规格说明书" | "待确定",
+  "project_name": "根据用户提供的信息填写"
 }}
 
 ---
@@ -135,7 +137,8 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 {{
   "complete": true | false,
   "message": "信息完善" | <动态生成的缺失信息提示>,
-  "document_type": "方案设计说明书" | "技术规格说明书" | "待确定"
+  "document_type": "方案设计说明书" | "技术规格说明书" | "待确定",
+  "project_name": "根据用户提供的信息填写"
 }}
 
 ## 关键约束条件
@@ -168,7 +171,8 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 
 - 编组规格： 4M2T
 - 重量要求： 全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%",
-  "document_type": ""
+  "document_type": "技术规格书说明书",
+  "project_name": "长沙城轨6号线牵引变流器"
 }}
 
 """
