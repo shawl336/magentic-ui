@@ -338,7 +338,7 @@ CONCLUSION_AND_REPLY_PROMPT = """
 technical_specification_paragraph_prompt_dict = {
     # 封面
     "_1_project_name": """
-你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为 JSON schema 格式。生成的数据需包含以下字段：
+你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为JSON格式。生成的数据需包含以下字段：
 
 1. _1_project_name
 项目或文档名称，例如“双电机功率电路”。
@@ -346,7 +346,7 @@ technical_specification_paragraph_prompt_dict = {
 
 ## 输出要求：
 
-- 输出为 JSON schema 格式，字段为 _1_project_name
+- 输出为JSON格式，字段为 _1_project_name
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -358,7 +358,7 @@ technical_specification_paragraph_prompt_dict = {
 """,
     # 第一章 目的与范围
     "_1_Purpose_and_Scope": """
-你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为 JSON schema 格式。生成的数据需包含以下字段：
+你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为JSON格式。生成的数据需包含以下字段：
 
 1. _1_Purpose_and_Scope
 此处阐述编写文档的主要描述内容以及目的。
@@ -368,13 +368,79 @@ technical_specification_paragraph_prompt_dict = {
 
 ## 输出要求：
 
-- 输出为 JSON schema 格式，字段为_1_Purpose_and_Scope。
+- 输出为JSON格式，字段为_1_Purpose_and_Scope。
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
 ```json{
  
   "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。"
+}
+```
+用户上下文为：
+""",
+}
+
+project_design_paragraph_prompt_dict = {
+    # 封面
+    "_coverpage_Project_Name": """
+你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为 JSON 格式。生成的数据需包含以下字段：
+
+1. _coverpage_Project_Name
+项目或文档名称，例如“双电机功率电路”。
+提取规则：直接使用用户提供的项目名称，若未提供，则根据上下文推断一个清晰、具体的名称。
+
+## 输出要求：
+
+- 输出为JSON格式，字段为 _coverpage_Project_Name
+- 确保字段值符合上下文，语言简洁、规范。
+
+## 示例输出：
+```json{
+  "_coverpage_Project_Name": "双电机功率电路"
+}
+```
+用户上下文为：
+""",
+    # 第一章 目的与范围
+    "_1_Purpose_and_Scope": """
+你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为 JSON 格式。生成的数据需包含以下字段：
+
+1. _1_Purpose_and_Scope
+此处阐述编写文档的主要描述内容以及目的。
+例如：
+“本文档为{{项目名称或文件名称}}的方案设计文件，旨在清晰、准确、全面的描述XXX项目的方案设计，作为后续技术设计的依据。
+本方案设计说明书适用于{{项目名称或对象}}的研制。”
+
+## 输出要求：
+
+- 输出为JSON格式，字段为_1_Purpose_and_Scope。
+- 确保字段值符合上下文，语言简洁、规范。
+
+## 示例输出：
+```json{
+ 
+  "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。"
+}
+```
+用户上下文为：
+""",
+    # 第十一章 内容中只需要填充文件名
+    "_11_1_Project_Name": """
+你是一个文档生成助手，负责根据用户提供的上下文生成结构化数据，输出为JSON格式。生成的数据需包含以下字段：
+
+1. _11_1_Project_Name
+项目或文档名称，例如“双电机功率电路”。
+提取规则：直接使用用户提供的项目名称，若未提供，则根据上下文推断一个清晰、具体的名称。
+
+## 输出要求：
+
+- 输出为JSON格式，字段为 _11_1_Project_Name
+- 确保字段值符合上下文，语言简洁、规范。
+
+## 示例输出：
+```json{
+  "_11_1_Project_Name": "双电机功率电路"
 }
 ```
 用户上下文为：
@@ -403,7 +469,7 @@ urban_rail_traction_system_specification_dict = {
 3. 需将案例中的“济南地铁8号线一期”“电气牵引系统”“辅助电源系统”等专属信息，替换为你所指定项目的对应信息，其余逻辑框架与语气保持不变。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _1_Purpose_and_Scope
+- 输出为JSON格式，字段为 _1_Purpose_and_Scope
 - 确保字段值符合上下文，语言简洁、规范。
 ## 示例输出：
 ```json{
@@ -422,7 +488,7 @@ urban_rail_traction_system_specification_dict = {
 请严格按照指令进行返回，不得主观臆断，不能修改返回格式。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _3_Reference_File_Name_
+- 输出为JSON格式，字段为 _3_Reference_File_Name_
 - 确保字段值符合上下文，语言简洁、规范。
 ## 示例输出：
 ```json{
@@ -454,7 +520,7 @@ urban_rail_traction_system_specification_dict = {
 3. 语言风格：保持技术文档的正式性、严谨性，避免口语化，核心功能描述（如第1点的牵引/电制动控制、辅助电源功能）可沿用案例稳定表述，设备类型、项目名称等则按实际提取信息调整。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _5_1_Goal_
+- 输出为JSON格式，字段为 _5_1_Goal_
 - 确保字段值符合上下文，语言简洁、规范。
 ## 示例输出：
 ```json{
@@ -471,7 +537,7 @@ urban_rail_traction_system_specification_dict = {
 请严格按照指令进行返回，不得主观臆断，不能修改返回格式。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _5_3_high_voltage_
+- 输出为JSON格式，字段为 _5_3_high_voltage_
 - 确保字段值符合上下文，语言简洁、规范。
 ## 示例输出：
 ```json{
@@ -523,7 +589,7 @@ urban_rail_traction_system_specification_dict = {
 相对湿度方面，月平均为 77.5％，最大月平均为 85.2％（集中在 6 月，与梅雨期、夏季风鼎盛期的充沛降水同步），最小月平均为 68.3％（集中在 12 月，受冬季大陆干冷气流影响）。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _6_Usage_Conditions_
+- 输出为JSON格式，字段为 _6_Usage_Conditions_
 - 确保字段值符合上下文，语言简洁、规范。
 ## 示例输出：
 ```json{
@@ -570,7 +636,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _8_1_1_Train_Structure_Speed_
+- 输出为JSON格式，字段为 _8_1_1_Train_Structure_Speed_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -591,7 +657,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _8_1_1_Initial_acceleration_
+- 输出为JSON格式，字段为 _8_1_1_Initial_acceleration_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -612,7 +678,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _8_1_1_AVG_acceleration_
+- 输出为JSON格式，字段为 _8_1_1_AVG_acceleration_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -633,7 +699,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _8_1_1_AVG_Travel_Speed_
+- 输出为JSON格式，字段为 _8_1_1_AVG_Travel_Speed_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -677,7 +743,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _8_1_1_Fault_Operation_Rescue_
+- 输出为JSON格式，字段为 _8_1_1_Fault_Operation_Rescue_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
@@ -702,7 +768,7 @@ urban_rail_traction_system_specification_dict = {
 4.禁止事项：不添加任何额外说明文字，不编造未检索到的信息，严格按上述规则返回结果。
 
 ## 输出要求：
-- 输出为 JSON schema 格式，字段为 _10_Weight_Req_
+- 输出为JSON格式，字段为 _10_Weight_Req_
 - 确保字段值符合上下文，语言简洁、规范。
 
 ## 示例输出：
