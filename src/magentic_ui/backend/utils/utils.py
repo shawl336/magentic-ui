@@ -45,7 +45,7 @@ def construct_task(
                     try:
                         text_content = file_content.decode("utf-8")
                         text_parts.append(
-                            f"Attached file: {file.get('name', 'unknown.file')}\n{text_content}"
+                            f"附件(Attached file): {file.get('name', 'unknown.file')}\n{text_content}"
                         )
                         attached_files.append(
                             {
@@ -59,7 +59,7 @@ def construct_task(
                         # If it's not text, encode as base64 for binary files
                         base64_content = base64.b64encode(file_content).decode("utf-8")
                         text_parts.append(
-                            f"Attached file: {file.get('name', 'unknown.file')} (binary file)"
+                            f"附件(Attached file): {file.get('name', 'unknown.file')} (二进制文件)"
                         )
                         # For binary files, we'll store them as base64 in the message
                         attached_files.append(
@@ -74,7 +74,7 @@ def construct_task(
                 except Exception as e:
                     logger.error(f"Error reading uploaded file {file_path}: {str(e)}")
                     text_parts.append(
-                        f"Attached file: {file.get('name', 'unknown.file')} (failed to read content)"
+                        f"附件(Attached file): {file.get('name', 'unknown.file')} (内容无法被直接读取)"
                     )
                     attached_files.append(
                         {
@@ -85,10 +85,11 @@ def construct_task(
                         }
                     )
             elif file.get("type", "").startswith("image/"):
+                # Images are not uploaded as files but are directly added to the message
                 # Handle image file using from_base64 method
                 image = Image.from_base64(file["content"])
                 images.append(image)
-                text_parts.append(f"Attached image: {file.get('name', 'unknown.img')}")
+                text_parts.append(f"附件(Attached file): {file.get('name', 'unknown.img')}")
                 # name and type
                 attached_files.append(
                     {
@@ -101,7 +102,7 @@ def construct_task(
                 try:
                     text_content = base64.b64decode(file["content"]).decode("utf-8")
                     text_parts.append(
-                        f"Attached file: {file.get('name', 'unknown.file')}\n{text_content}"
+                        f"附件(Attached file): {file.get('name', 'unknown.file')}\n{text_content}"
                     )
                     attached_files.append(
                         {
@@ -112,7 +113,7 @@ def construct_task(
                 except Exception as e:
                     logger.error(f"Error processing file content: {str(e)}")
                     text_parts.append(
-                        f"Attached file: {file.get('name', 'unknown.file')} (failed to process content)"
+                        f"附件(Attached file): {file.get('name', 'unknown.file')} (内容无法被直接读取)"
                     )
                     attached_files.append(
                         {

@@ -237,7 +237,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
                   key={idx}
                   className="text-xs border-l-2 border-gray-200 pl-2"
                 >
-                  {step.title || `Step ${idx + 1}`}
+                  {step.title || `${t("Step")} ${idx + 1}`}
                 </div>
               ))}
               {steps.length > 3 && (

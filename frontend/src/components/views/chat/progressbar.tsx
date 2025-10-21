@@ -1,6 +1,7 @@
 import * as React from "react";
 import { CheckCircle2, RotateCw } from "lucide-react";
 import { Tooltip } from "antd";
+import { useTranslation } from "react-i18next";
 
 interface Plan {
   task: string;
@@ -28,6 +29,7 @@ export default function ProgressBar({
   progress,
   hasFinalAnswer,
 }: ProgressBarProps) {
+  const { t } = useTranslation();
   // Adjust progress when we have final answer
   const adjustedProgress = React.useMemo(() => {
     if (hasFinalAnswer && progress.plan?.steps) {
@@ -46,7 +48,7 @@ export default function ProgressBar({
         <div className="flex justify-center w-full">
           <div className="w-full max-w-xs px-4 py-2">
             <div className="text-sm text-gray-500 mt-1 text-center font-medium">
-              Planning...
+              {t("Planning...")}
             </div>
           </div>
         </div>
@@ -120,7 +122,7 @@ export default function ProgressBar({
                       const tooltipContent = step ? (
                         <div>
                           <div className="font-medium">
-                            Step {index + 1}: {step.title}
+                            {t("Step")} {index + 1}: {step.title}
                           </div>
                           <div className="text-xs mt-1">{step.details}</div>
                         </div>
@@ -164,7 +166,7 @@ export default function ProgressBar({
                       const tooltipContent = step ? (
                         <div>
                           <div className="font-medium">
-                            Step {index + 1}: {step.title}
+                            {t("Step")} {index + 1}: {step.title}
                           </div>
                           <div className="text-xs mt-1">{step.details}</div>
                         </div>
@@ -222,11 +224,11 @@ export default function ProgressBar({
                 <div className="text-sm text-gray-500 mt-5 text-center">
                   {hasFinalAnswer ? (
                     <span className="text-green-600 font-medium">
-                      Task Completed
+                      {t("Task Completed")}
                     </span>
                   ) : adjustedProgress.plan?.task ? (
                     <span>
-                      Step {adjustedProgress.currentStep + 1} of{" "}
+                      {t("Step")} {adjustedProgress.currentStep + 1} of{" "}
                       {adjustedProgress.totalSteps}
                       {adjustedProgress.plan?.steps[
                         adjustedProgress.currentStep
@@ -237,7 +239,7 @@ export default function ProgressBar({
                     </span>
                   ) : (
                     <span>
-                      Step {adjustedProgress.currentStep + 1} of{" "}
+                      {t("Step")} {adjustedProgress.currentStep + 1} of{" "}
                       {adjustedProgress.totalSteps}
                       {adjustedProgress.plan?.steps[
                         adjustedProgress.currentStep

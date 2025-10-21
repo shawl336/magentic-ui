@@ -583,7 +583,7 @@ export default function ChatView({
   const processFiles = async (
     files: RcFile[],
     runId: number,
-    errorMessage: string = "File upload failed. Continuing with task..."
+    errorMessage: string = t("File upload failed. Continuing with task...")
   ) => {
     let processedFiles: Array<{
       name: string;

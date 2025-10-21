@@ -334,7 +334,7 @@ const PlanView: React.FC<PlanProps> = ({
                                 className={`flex items-center justify-center  font-semibold p-1.5 ${!viewOnly ? "cursor-grab" : ""
                                   }`}
                               >
-                                Step {index + 1}
+                                {t("Step")} {index + 1}
                               </span>
                               <div className="flex items-center ml-2">
                                 <div className="text-gray-600 dark:text-gray-300">
@@ -354,7 +354,7 @@ const PlanView: React.FC<PlanProps> = ({
                                   <ClipboardList
                                     className="h-4 w-4 text-purple-600 dark:text-purple-400 cursor-pointer hover:text-purple-800 dark:hover:text-purple-200 transition-colors"
                                     onClick={() => toggleSentinelTooltip(index)}
-                                    title="Sentinel Step - Click for details"
+                                    title={t("Sentinel Step - Click for details")}
                                   />
                                   {/* Tooltip */}
                                   {showSentinelTooltip[index] && (
@@ -427,13 +427,13 @@ const PlanView: React.FC<PlanProps> = ({
                               {isSentinelStep(item) && !viewOnly && (
                                 <div className="mt-3 space-y-2 border-t border-gray-200 dark:border-gray-700 pt-3">
                                   <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                                    Sentinel Step Configuration
+                                    {t("Sentinel Step Configuration")}
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     {/* Sleep Duration Input */}
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Sleep Duration (seconds)
+                                        {t("Sleep Duration (seconds)")}
                                       </label>
                                       <input
                                         type="number"
@@ -445,13 +445,13 @@ const PlanView: React.FC<PlanProps> = ({
                                         placeholder="e.g., 3600"
                                       />
                                       <div className="text-xs text-gray-500 mt-1">
-                                        Display: {item.sleep_duration ? formatDuration(item.sleep_duration) : 'Not set'}
+                                        {t("Display")}: {item.sleep_duration ? formatDuration(item.sleep_duration) : t("Not set")}
                                       </div>
                                     </div>
                                     {/* Condition Input */}
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Condition
+                                        {t("Condition")}
                                       </label>
                                       <input
                                         type="text"

@@ -11,6 +11,7 @@ import PlanCard from "./PlanCard";
 import { IPlan } from "../../types/plan";
 import { Session } from "../../types/datamodel";
 import { useTranslation } from "react-i18next";
+import { TFunction } from "i18next";
 
 interface PlanListProps {
   onTabChange?: (tabId: string) => void;
@@ -26,7 +27,8 @@ const normalizePlanData = (
   planData: any,
   userId: string,
   defaultTask: string = "Untitled",
-  preserveId: boolean = false // Add this parameter
+  defaultTitle: string = "Untitled Step",
+  preserveId: boolean = false, // Add this parameter
 ): Partial<IPlan> => {
   return {
     // Only include ID if preserveId is true
@@ -35,7 +37,7 @@ const normalizePlanData = (
     task: planData.task || defaultTask,
     steps: Array.isArray(planData.steps)
       ? planData.steps.map((step: any) => ({
-          title: step.title || "Untitled Step",
+          title: step.title || defaultTitle,
           details: step.details || "",
           enabled: step.enabled !== false,
           open: step.open || false,
@@ -73,7 +75,7 @@ const PlanList: React.FC<PlanListProps> = ({
       const response = await planAPI.listPlans(userId);
 
       const validatedPlans: IPlan[] = response.map(
-        (plan) => normalizePlanData(plan, userId, "Untitled", true) as IPlan // preserve ID
+        (plan) => normalizePlanData(plan, userId, t("Untitled"), t("Untitled Step"), true) as IPlan // preserve ID
       );
 
       setPlans(validatedPlans);
@@ -142,23 +144,19 @@ const PlanList: React.FC<PlanListProps> = ({
 
       const newPlan = normalizePlanData(
         { task: t("New Plan"), steps: [] },
-        userId
+        userId,t("New Plan"), t("Untitled Step")
       );
 
       const response = await planAPI.createPlan(newPlan, userId);
 
       if (response && response.id) {
-        message.success("New plan created successfully");
+        message.success(t("New plan created successfully"));
         setNewPlanId(response.id); // Store the new plan ID
         fetchPlans(); // Refresh the list to include the new plan
       }
     } catch (err) {
       console.error("Error creating new plan:", err);
-      message.error(
-        `Failed to create plan: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
+      message.error(t("Failed to create plan: \\{error\\}", { error: err instanceof Error ? err.message : String(err) }));
     } finally {
       setIsCreatingPlan(false);
     }
@@ -174,7 +172,7 @@ const PlanList: React.FC<PlanListProps> = ({
       } catch (parseError) {
         message.error({
           content:
-            "Invalid JSON file format. Please check your file and try again.",
+            t("Invalid JSON file format. Please check your file and try again."),
           duration: 5,
         });
         return;
@@ -183,26 +181,24 @@ const PlanList: React.FC<PlanListProps> = ({
       if (!planData || typeof planData !== "object") {
         message.error({
           content:
-            "Invalid plan format. The file does not contain a valid plan structure.",
+            t("Invalid plan format. The file does not contain a valid plan structure."),
           duration: 5,
         });
         return;
       }
 
-      const newPlan = normalizePlanData(planData, userId, "Imported Plan");
+      const newPlan = normalizePlanData(planData, userId, t("Imported Plan"), t("Untitled Step"));
 
       const response = await planAPI.createPlan(newPlan, userId);
 
       if (response && response.id) {
-        message.success("Plan imported successfully");
+        message.success(t("Plan imported successfully"));
         fetchPlans(); // Refresh to get the new plan with its ID
       }
     } catch (err) {
       console.error("Error importing plan:", err);
       message.error({
-        content: `Failed to import plan: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        content: t("Failed to import plan: \\{error\\}", { error: err instanceof Error ? err.message : String(err) }),
         duration: 5,
       });
     }
@@ -239,7 +235,7 @@ const PlanList: React.FC<PlanListProps> = ({
       if (file.type === "application/json" || file.name.endsWith(".json")) {
         handleImportPlan(file);
       } else {
-        message.error("Please upload a JSON file");
+        message.error(t("Please upload a JSON file"));
       }
     }
   };
@@ -252,7 +248,7 @@ const PlanList: React.FC<PlanListProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Spin size="large" tip="Loading plans..." />
+        <Spin size="large" tip={t("Loading plans...")} />
       </div>
     );
   }
@@ -265,7 +261,7 @@ const PlanList: React.FC<PlanListProps> = ({
           className="mt-4 px-4 py-2 bg-primary text-white rounded hover:bg-primary/80"
           onClick={() => window.location.reload()}
         >
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
