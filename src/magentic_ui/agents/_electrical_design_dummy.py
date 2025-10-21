@@ -90,8 +90,9 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     
     DEFAULT_DESCRIPTION = """
     
-    这是一个电气设计智能体，在电气设计工作流程中发挥重要作用。
+    这是一个可以生成电路拓扑图的智能体，在电气设计工作流程中发挥重要作用。
     它依据文字形式的电气设备需求，生成满足需求的电路拓扑图和对应的电路描述并保存对应的文件。
+    成功的生成电路图后，该智能体返回电路图的描述，以及生成的图片格式的电路拓扑图和CAD(.dwg)格式的电路拓扑图文件路径。
     """
 
     system_prompt_template = """
@@ -250,8 +251,6 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
 
         try:
             async for msg in self._generate_circuit_diagram(
-                inner_messages, 
-                messages, 
                 self.name, 
                 self._model_client, 
                 self._bind_relative_dir, 
@@ -335,8 +334,6 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     
     async def _generate_circuit_diagram(
         self,
-        inner_messages: List[BaseAgentEvent | BaseChatMessage],
-        thread: Sequence[BaseChatMessage | BaseAgentEvent],
         agent_name: str,
         model_client: ChatCompletionClient,
         bind_relative_dir: Path,
@@ -364,12 +361,8 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         # The list of new messages to be added to the thread.
         # Add system prompt as the last message before generation
-        current_thread = (
-            list(thread) + list(inner_messages)
-        )
-        context = self._thread_to_context(
-            messages=current_thread
-        )
+
+        context = self._thread_to_context()
         # the delegator only take as input the last message to analyze
         # the historical messages are ignored
         # last_message = context[-1]
@@ -571,12 +564,22 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         try:
             cwd = os.getcwd()
-            shutil.copy(os.path.join(cwd, "circuit_foo.jpg"), self._work_root / self._work_relative_dir / "电路拓扑图.jpg")
+            shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), self._work_root / self._work_relative_dir / "电路拓扑图.jpg")
         except Exception:
             return "生成电路拓扑图失败"  
         # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.jpg"], None)
         
-        return "电路拓扑图和对应的电路描述已生成，保存在\"电路拓扑图.jpg\"文件中。"
+        return """
+电路拓扑图已生成，分别保存在保存在\"电路拓扑图.jpg\"，\"电路拓扑图.dwg\"文件中。电路描述如下：
+
+三相高压脉冲电源电路说明：
+本电路以380V 50Hz三相交流电源为输入，接入端子A、B、C。输入电源经过由二极管D1至D6组成的三相整流桥，将交流电整流为高压直流电。电容C1用于直流母线滤波与能量储存。
+整流后的直流电压经全桥逆变器输入，逆变器由晶体管Q1、Q2、Q3、Q4组成。每个晶体管由驱动模块（G1–G4）提供栅极控制信号，而驱动模块又由STM32控制模块发出指令。电容C2至C6用作吸收或耦合电容，用于平衡电压及抑制开关瞬态。
+逆变器输出连接到变压器T1的初级绕组，T1将电压升高到次级高压侧。变压器次级输出经高压二极管D7至D10整流，并通过电阻R1至R4、电感L1及电容C7进行稳压与滤波。整流后的高压为电容C7充电。
+在输出端，放电间隙（标注为放电间隙）与C7并联。当C7两端电压达到放电间隙的击穿电压时，产生高压放电，向负载释放强脉冲能量。电压传感器实时检测输出电压，并通过采样电压电路将信号反馈至STM32控制系统。
+STM32模块通过监测反馈信号，协调逆变器的运行、脉冲时序及输出调节，并通过驱动模块控制Q1–Q4的开关模式。
+该系统是一个基于三相交流输入的高压脉冲发生电源，其主要功能包括整流、逆变、变压升压、高压整流以及受控脉冲放电。
+"""
 
     def _to_config(self) -> ElectricalDesignAgentConfig:
         """Convert the agent's state to a configuration object."""

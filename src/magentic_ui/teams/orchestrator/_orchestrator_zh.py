@@ -1281,7 +1281,7 @@ class Orchestrator(BaseGroupChatManager):
             self._state.message_history.append(message_to_send)  # My copy
 
             await self._publish_group_chat_message(
-                message_to_send.content, cancellation_token, internal=True
+                message_to_send.content, cancellation_token, internal=False
             )
         # TODO: add sentinel step execution here if sentinel step
         json_step_execution = {

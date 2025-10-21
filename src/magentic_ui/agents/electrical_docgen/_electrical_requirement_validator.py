@@ -40,6 +40,7 @@ from autogen_agentchat.messages import (
 )
 
 from magentic_ui.utils import thread_to_context
+from magentic_ui.teams.orchestrator._utils import extract_json_from_string
 from ._prompts import (
     ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT,
 )
@@ -291,14 +292,14 @@ class ElectricalRequirementValidator(BaseChatAgent):
                             f"JSON响应的验证失败: {json_response}, 正在重试 ({retries}/{self.max_retries})"
                         )
                 except json.JSONDecodeError as e:
-                    # json_response = extract_json_from_string(response.content)
-                    # if json_response is not None:
-                    #     if validate_json(json_response):
-                    #         return json_response
-                    #     else:
-                    #         exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
-                    # else:
-                    #     exception_message = f"JSON响应的解析失败，正在重试。你必须从响应中返回一个有效JSON对象。 错误: {e}"
+                    json_response = extract_json_from_string(response.content)
+                    if json_response:
+                        if validate_json(json_response):
+                            return json_response
+                        else:
+                            exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象且必须包含所有要求的字段。"
+                    else:
+                        exception_message = f"JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象且必须包含所有要求的字段。 错误: {e}"
                     logger.debug(
                         f"JSON响应的解析失败，正在重试 ({retries}/{self.max_retries})"
                     )
@@ -309,7 +310,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
             )
             raise ValueError("多次尝试后，无法获得有效的JSON响应")
         except Exception as e:
-            logger.debug(f"Orchestrator遇到错误: {e}", internal=False)
+            logger.debug(f"ElectricalRequirementValidator遇到错误: {e}", internal=False)
             raise
 
     def _validation_json(

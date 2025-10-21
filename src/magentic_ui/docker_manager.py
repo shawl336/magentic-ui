@@ -51,7 +51,7 @@ class DockerManager(DockerCommandLineCodeExecutor):
         ports: Optional[Dict[str, str]] = None,
         working_dir: Optional[str] = None,
         timeout: int = 60,
-        auto_remove: bool = True,
+        auto_remove: bool = False,
         stop_container: bool = True,
         device_requests: Optional[List[DeviceRequest]] = None,
         functions: Sequence[

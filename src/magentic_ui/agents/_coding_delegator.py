@@ -381,7 +381,6 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
                 auto_remove=True,
                 stop_container=True,
                 tty=True,
-                restart_policy={"Name": "on-failure", "MaximumRetryCount": 5},
             )
         
         if self._code_manager:
