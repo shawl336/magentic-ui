@@ -200,7 +200,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                     json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
                     await f.write(json_str)
                     
-                response_text = f"需求提取已经全部完成，提取的字段为：{str(filtered_data)}, json 格式保存在{file_name} 文件中。"
+                response_text = f"需求提取已经全部完成，提取的字段为：{json.dumps(filtered_data, ensure_ascii=False, indent=4)}, json 格式保存在{file_name} 文件中。"
                 yield Response(
                     chat_message=TextMessage(
                         content=response_text,
