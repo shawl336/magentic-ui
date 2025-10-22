@@ -1,6 +1,7 @@
 # api/app.py
 import os
 import yaml
+import urllib.parse
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
 
@@ -93,16 +94,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:8000",
-        "http://127.0.0.1:8000",
         "http://localhost:8001",
         "http://localhost:8081",
-        "http://localhost:8099",       # OnlyOffice server (localhost access)
-        "http://192.168.52.183:8099",   # Keep old IP for backward compatibility
-        "*",  # Allow all origins for development
+        "http://127.0.0.1:8000",
+        "http://172.17.0.1:8001",
         "http://127.0.0.1:8081",
         "http://0.0.0.0:8000",
         "http://0.0.0.0:8001",
         "http://0.0.0.0:8081",
+        "*",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -204,17 +204,102 @@ async def health_check():
 # OnlyOffice callback endpoint
 @api.post("/callback")
 async def onlyoffice_callback(request: Request):
-    """OnlyOffice document callback endpoint"""
+    """OnlyOffice document callback endpoint for handling document saves"""
     try:
         body = await request.json()
         logger.info(f"OnlyOffice callback received: {body}")
 
-        # For read-only mode, we just acknowledge the callback
-        # In the future, if edit mode is needed, implement document saving logic here
-        if body.get('status') == 2:  # Document is ready for saving
-            logger.info("Document ready for saving, but operating in read-only mode")
-
-        return {"error": 0}
+        status = body.get('status')
+        file_url = body.get('url')
+        changes_url = body.get('changesurl')
+        
+        # Get the original file path from the callback URL parameters
+        original_file_path = request.query_params.get('filepath')
+        if original_file_path:
+            original_file_path = urllib.parse.unquote(original_file_path)
+            logger.info(f"Original file path from callback URL: {original_file_path}")
+        
+        # OnlyOffice status codes:
+        # 0 - Document not found
+        # 1 - Document is being edited
+        # 2 - Document is ready for saving (user closed editor)
+        # 3 - Document saving error has occurred
+        # 4 - Document is closed with no changes
+        # 6 - Document is being edited, but the current document state is saved
+        # 7 - Error has occurred while force saving the document
+        
+        if status in [2, 6] and file_url:
+            # Status 2: Document is ready for saving (user closed editor)
+            # Status 6: Document is being edited, but the current document state is saved (auto-save)
+            logger.info(f"Document ready for saving (status: {status}), downloading from: {file_url}")
+            
+            try:
+                # Download the updated document from OnlyOffice
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(file_url)
+                    response.raise_for_status()
+                    document_content = response.content
+                
+                # Use the original file path from callback URL parameters
+                if not original_file_path:
+                    logger.error("No original file path provided in callback URL")
+                    return {"error": 1, "message": "No original file path provided"}
+                
+                # Ensure the file path is safe and within static root
+                decoded_file_path = urllib.parse.unquote(str(original_file_path))
+                full_path = os.path.join(initializer.static_root, decoded_file_path)
+                
+                # Security check: ensure the file is within the static root
+                if not os.path.abspath(full_path).startswith(os.path.abspath(initializer.static_root)):
+                    logger.warning(f"Attempted to save file outside static root: {decoded_file_path}")
+                    return {"error": 1, "message": "Access denied"}
+                
+                # Create directory if it doesn't exist
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                
+                # Save the updated document
+                with open(full_path, 'wb') as f:
+                    f.write(document_content)
+                
+                logger.info(f"Document successfully saved to: {full_path}")
+                
+                # Also save changes if available (for tracking purposes)
+                if changes_url and status == 2:
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            changes_response = await client.get(changes_url)
+                            changes_response.raise_for_status()
+                            changes_content = changes_response.content
+                        
+                        changes_path = full_path + ".changes"
+                        with open(changes_path, 'wb') as f:
+                            f.write(changes_content)
+                        logger.info(f"Document changes saved to: {changes_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save changes: {str(e)}")
+                
+                return {"error": 0}
+                
+            except Exception as e:
+                logger.error(f"Error downloading/saving document: {str(e)}")
+                return {"error": 1, "message": f"Failed to save document: {str(e)}"}
+        
+        elif status == 3:
+            # Document saving error
+            logger.error(f"OnlyOffice reported document saving error: {body}")
+            return {"error": 1, "message": "Document saving error occurred"}
+        
+        elif status == 7:
+            # Error occurred while force saving
+            logger.error(f"OnlyOffice reported force saving error: {body}")
+            return {"error": 1, "message": "Force saving error occurred"}
+        
+        else:
+            # Other statuses (0, 1, 4) - just acknowledge
+            logger.info(f"OnlyOffice callback acknowledged (status: {status})")
+            return {"error": 0}
+            
     except Exception as e:
         logger.error(f"Error in OnlyOffice callback: {str(e)}")
         return {"error": 1, "message": str(e)}
@@ -274,7 +359,11 @@ async def serve_document_for_onlyoffice(file_path: str, request: Request):
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                     "Access-Control-Allow-Headers": "*",
-                    "Cache-Control": "no-cache",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                    "Last-Modified": str(os.path.getmtime(full_path)),
+                    "ETag": f'"{os.path.getmtime(full_path)}"',
                     "Content-Length": str(len(content)),  # Include content length in headers
                 }
             )
@@ -287,7 +376,11 @@ async def serve_document_for_onlyoffice(file_path: str, request: Request):
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                 "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "Last-Modified": str(os.path.getmtime(full_path)),
+                "ETag": f'"{os.path.getmtime(full_path)}"',
             }
         )
 
