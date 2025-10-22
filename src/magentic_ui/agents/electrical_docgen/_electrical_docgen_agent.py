@@ -212,6 +212,39 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                 return message
         raise AssertionError("The stream should have returned the final result.")
 
+    async def on_messages_stream_foo(
+        self
+    ) -> Response:
+        """
+        For debug only, skip the token-consuming and time-consuming process
+        """
+        logger.warning("In debug mode, using the foo on_messages_stream")          
+        
+        # 保存文件
+        self.generator = GenDocxUseTemplate(
+            os.path.join(
+                self.current_dir_os_path,
+                "docx_template/1_城轨_系统技术规格说明书.docx",
+            ),
+            str(self._work_root / self._work_relative_dir),
+        )
+        file_name = "广州地铁5号线牵引变流器项目技术规格说明书.docx"
+        variable_dict = {
+            "_coverpage_Project_Name": "双电机功率电路",
+            "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。",
+            "_11_1_Project_Name": "双电机功率电路",
+        }
+        self.generator.gen_docx(variable_dict, file_name)
+
+        response_text = "您的【设计文档】说明书已经生成完成，总结内容如下：\n 聚焦广州地铁5号线牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
+        return Response(
+            chat_message=TextMessage(
+                content=response_text,
+                source=self.name,
+            ),
+            inner_messages=[],
+        )
+
     async def on_messages_stream(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
@@ -230,7 +263,11 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         # Add the messages to the model context.
         self.message_history.extend(messages)
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
-
+        
+        # DEBUG
+        yield await self.on_messages_stream_foo()
+        return
+        
         if self._state == "planning":
             # first step: jugement is contain all requirement message
             # get context prompt

@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 import shutil
-from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping
+from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping, Tuple
 from typing_extensions import Annotated
 import json, os
 from autogen_core.tools import Workbench
@@ -814,10 +814,11 @@ class CodingDelegatorAgent(BaseChatAgent, Component[CodingDelegatorAgentConfig])
         """Validate the JSON response."""
         if not isinstance(json_response, dict):
             return False
-        required_keys = ["request", "save_path"]
+        required_keys = ["complete", "message", "circuit_diagram_path", "circuit_picture_path", "circuit_description"]
         for key in required_keys:
             if key not in json_response:
                 return False
+        
         return True
     
     async def on_reset(self, cancellation_token: CancellationToken) -> None:

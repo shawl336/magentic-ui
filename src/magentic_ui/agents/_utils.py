@@ -2,6 +2,7 @@ import asyncio
 import shlex
 import os
 from typing import List, Tuple, Dict, Any
+import aiofiles
 from typing_extensions import Annotated
 
 from autogen_core import CancellationToken
@@ -48,7 +49,7 @@ async def notify_to_download(
     run_dir: Annotated[str, "当前会话的所有文件的根目录"],
     file_and_directory_list: Annotated[List[str], "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
     target_directory: Annotated[str | None, "用户指定的下载存放路径，是客户端上的路径，与服务端无关。如果没有给定下载则不要指定，如果给空字符串也等价于没有指定下载路径"] = None
-    ) -> Dict[str, Any]:
+) -> Dict[str, Any]:
     r"""
     通知用户(客户端)下载file_and_directory_list列表中给定的文件和文件夹。target_directory是用户(客户端)上的下载保存路径，如果用户指定了则为用户指定的路径，否则为空字符串。
     此函数在FastAPI服务器端运行，用于准备文件供客户端下载。
@@ -101,3 +102,28 @@ async def notify_to_download(
         "target_directory": target_directory if target_directory else ""
     }
     
+async def read_file(
+    file_path: Annotated[str, "文件的路径或名字"], 
+):
+    """
+    读取文件，并返回文件内容。只有UTF-8可解码的文件才会返回内容。
+    如果文件不是UTF-8编码，则返回错误信息。
+    """
+    try:
+        # First try to read as binary to check if it's UTF-8 decodable
+        async with aiofiles.open(file_path, "rb") as f:
+            binary_content = await f.read()
+        
+        # Try to decode as UTF-8
+        try:
+            content = binary_content.decode('utf-8')
+            return content
+        except UnicodeDecodeError:
+            return f"错误：文件 '{file_path}' 不是UTF-8编码，无法读取内容。"
+            
+    except FileNotFoundError:
+        return f"错误：文件 '{file_path}' 不存在。"
+    except PermissionError:
+        return f"错误：没有权限读取文件 '{file_path}'。"
+    except Exception as e:
+        return f"错误：读取文件 '{file_path}' 时发生异常：{str(e)}"

@@ -17,13 +17,14 @@ from typing import (
     Sequence,
     Union,
 )
+from autogen_agentchat.agents import BaseChatAgent
 from loguru import logger
 from autogen_agentchat.base import ChatAgent, TaskResult, Team
 from autogen_agentchat.messages import AgentEvent, ChatMessage, TextMessage
-from autogen_core import EVENT_LOGGER_NAME, CancellationToken, ComponentModel
+from autogen_core import EVENT_LOGGER_NAME, CancellationToken, ComponentModel, SingleThreadedAgentRuntime
 from autogen_core.logging import LLMCallEvent
 from ...task_team import get_task_team
-from ...types import RunPaths
+from ...types import CheckpointEvent, RunPaths
 from ...magentic_ui_config import MagenticUIConfig, ModelClientConfigs
 from ...input_func import InputFuncType
 from ...agents import WebSurfer
@@ -32,7 +33,6 @@ from ..datamodel.types import EnvironmentVariable, LLMCallEventMessage, TeamResu
 from ..datamodel.db import Run
 from ..utils.utils import get_modified_files
 from ...tools.playwright.browser.utils import get_browser_resource_config
-
 
 class RunEventLogger(logging.Handler):
     """Event logger that queues LLMCallEvents for streaming"""
@@ -68,6 +68,7 @@ class TeamManager:
         self.config = config
         # Track uploaded files across the entire conversation
         self.uploaded_files: set[str] = set()
+        # self._runtime = SingleThreadedAgentRuntime(ignore_unhandled_exceptions=False)
         
     @staticmethod
     async def load_from_file(path: Union[str, Path]) -> Dict[str, Any]:
@@ -357,17 +358,17 @@ class TeamManager:
         settings_config: Optional[Dict[str, Any]] = None,
         run: Optional[Run] = None,
     ) -> AsyncGenerator[
-        Union[AgentEvent, ChatMessage, LLMCallEventMessage, TeamResult], None
+        Union[AgentEvent, ChatMessage, LLMCallEventMessage, TeamResult, CheckpointEvent], None
     ]:
         """Stream team execution results"""
         start_time = time.time()
 
         # Setup logger correctly
-        logger = logging.getLogger(EVENT_LOGGER_NAME)
-        logger.setLevel(logging.CRITICAL)
+        event_logger = logging.getLogger(EVENT_LOGGER_NAME)
+        event_logger.setLevel(logging.CRITICAL)
         llm_event_logger = RunEventLogger()
-        logger.handlers = [llm_event_logger]  # Replace all handlers
-        logger.info(f"Running in docker: {self.inside_docker}")
+        event_logger.handlers = [llm_event_logger]  # Replace all handlers
+        event_logger.info(f"Running in docker: {self.inside_docker}")
         paths = self.prepare_run_paths(run=run)
         known_files = set(
             file["name"]
@@ -379,10 +380,10 @@ class TeamManager:
         # Extract uploaded file names from the task to exclude them from generated files tracking
         task_uploaded_files = self._extract_uploaded_file_names(task)
         self.uploaded_files.update(task_uploaded_files)
-        logger.info(
+        event_logger.info(
             f"Found {len(task_uploaded_files)} new uploaded files to exclude from generated files tracking: {task_uploaded_files}"
         )
-        logger.info(f"Total uploaded files being tracked: {self.uploaded_files}")
+        event_logger.info(f"Total uploaded files being tracked: {self.uploaded_files}")
 
         global_new_files: List[Dict[str, str]] = []
         try:
@@ -411,46 +412,51 @@ class TeamManager:
                 ):
                     if cancellation_token and cancellation_token.is_cancelled():
                         break
+                    
+                    # Is this message CheckpoinEvent? 
+                    # Donot check new files for CheckpointEvent to avoid file message 
+                    # be sent to the frontend before its corresponding text messages
+                    modified_files = []
+                    if not isinstance(message, CheckpointEvent):
+                        # Get all current files with full metadata 
+                        modified_files = get_modified_files(
+                            start_time, time.time(), source_dir=str(paths.internal_run_dir)
+                        )
+                        current_file_names = {file["name"] for file in modified_files}
 
-                    # Get all current files with full metadata
-                    modified_files = get_modified_files(
-                        start_time, time.time(), source_dir=str(paths.internal_run_dir)
-                    )
-                    current_file_names = {file["name"] for file in modified_files}
+                        # Find new files, excluding uploaded files
+                        new_file_names = (
+                            current_file_names - known_files - self.uploaded_files
+                        )
+                        known_files = current_file_names  # Update for next iteration
 
-                    # Find new files, excluding uploaded files
-                    new_file_names = (
-                        current_file_names - known_files - self.uploaded_files
-                    )
-                    known_files = current_file_names  # Update for next iteration
-
-                    # Get the full data for new files
-                    new_files = [
-                        file
-                        for file in modified_files
-                        if file["name"] in new_file_names
-                    ]
-
-                    if new_files:
-                        # filter files that start with "tmp_code"
+                        # Get the full data for new files
                         new_files = [
                             file
-                            for file in new_files
-                            if not file["name"].startswith("tmp_code")
-                            and not file["name"].startswith("supervisord.pid")
+                            for file in modified_files
+                            if file["name"] in new_file_names
                         ]
-                        if len(new_files) > 0:
-                            file_message = TextMessage(
-                                source="system",
-                                content="File Generated",
-                                metadata={
-                                    "internal": "no",
-                                    "type": "file",
-                                    "files": json.dumps(new_files, ensure_ascii=False, indent=4),
-                                },
-                            )
-                            global_new_files.extend(new_files)
-                            yield file_message
+
+                        if new_files:
+                            # filter files that start with "tmp_code"
+                            new_files = [
+                                file
+                                for file in new_files
+                                if not file["name"].startswith("tmp_code")
+                                and not file["name"].startswith("supervisord.pid")
+                            ]
+                            if len(new_files) > 0:
+                                file_message = TextMessage(
+                                    source="system",
+                                    content="File Generated",
+                                    metadata={
+                                        "internal": "no",
+                                        "type": "file",
+                                        "files": json.dumps(new_files, ensure_ascii=False, indent=4),
+                                    },
+                                )
+                                global_new_files.extend(new_files)
+                                yield file_message
 
                     if isinstance(message, TaskResult):
                         yield TeamResult(
@@ -492,14 +498,14 @@ class TeamManager:
                         yield event
         finally:
             # Cleanup - remove our handler
-            if llm_event_logger in logger.handlers:
-                logger.handlers.remove(llm_event_logger)
+            if llm_event_logger in event_logger.handlers:
+                event_logger.handlers.remove(llm_event_logger)
 
             # Ensure cleanup happens
             if self.team and hasattr(self.team, "close"):
-                logger.info("Closing team")
+                event_logger.info("Closing team")
                 await self.team.close()  # type: ignore
-                logger.info("Team closed")
+                event_logger.info("Team closed")
 
     async def close(self):
         """Close the team manager"""

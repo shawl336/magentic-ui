@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from autogen_agentchat.agents import UserProxyAgent
 from autogen_agentchat.base import ChatAgent, Team
-from autogen_core import ComponentModel
+from autogen_core import ComponentModel, AgentRuntime, SingleThreadedAgentRuntime
 from autogen_core.models import ChatCompletionClient
 
 from .agents import (
@@ -54,7 +54,8 @@ async def get_task_team(
     input_func: Optional[InputFuncType] = None,
     *,
     paths: RunPaths,
-    run_id: int
+    run_id: int,
+    runtime: AgentRuntime | None = None,
 ) -> GroupChat | RoundRobinGroupChat:
     """
     Creates and returns a GroupChat team with specified configuration.
@@ -342,6 +343,7 @@ async def get_task_team(
         orchestrator_config=orchestrator_config,
         model_client=model_client_orch,
         memory_provider=memory_provider,
+        runtime=runtime,
     )
 
     return team

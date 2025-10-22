@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 import shutil
-from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping
+from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping, Callable
 from typing_extensions import Annotated
 import json, os
 from autogen_core.tools import Workbench
@@ -41,11 +41,12 @@ from autogen_core.models import (
     FunctionExecutionResult,
     AssistantMessage,
     FunctionExecutionResultMessage,
+    CreateResult,
 )
 
 from autogen_core.tools import FunctionTool
 
-from ._utils import notify_to_download
+from ._utils import notify_to_download, read_file
 from ..utils import thread_to_context
 
 from ..approval_guard import BaseApprovalGuard
@@ -101,9 +102,38 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     今天的日期是:{date_today}
     
     ## 工作原则
-    在电气设计过程中，你运用生成式算法工具，将用户的文字需求转化为电路拓扑图和对应的电路描述。并保存为对应的文件。
+    在电气设计过程中，你运用生成式(generative)算法工具，将用户的文字需求转化为电路拓扑图和对应的电路描述。并保存为对应的文件。
+    电路图的生成是一个迭代的过程，你需要和用户进行多轮交互，直到用户确认并同意生成的电路图符合他的要求。在每次交互中，你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
+    
+    为了帮助用户更好地生成符合要求的电路图，首先思考如下问题:
+    1. 用户是否提供了需求文件而非只有直接文字描述？ 如果是的，一定要使用工具先读取需求文件内容才能知道用户的完整需求。
+    2. 是否已经有电路图文件了(包含用户提供的或者之前迭代过程中生成的)？ 如果答案是否定的，直接根据用户的请求生成电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。
+    3. 用户是否已经确认生成的电路图文件和电路描述符合他的要求(额外地，"继续"或者"下一步"等同义表达也表示用户已经确认生成的电路图文件和电路描述符合他的要求)？ 如果答案是肯定的，输出已经满足用户需求的电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。 
+    
+    **重点注意**
     - 你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
     - 不要添加任何主观意见，不要添加任何解释，不要添加任何说明，不要添加任何备注。
+    - 用户的请求可能是以文件路径的形式给出的，你需要读取文件内容，并根据文件内容生成电路拓扑图和对应的电路描述。
+    - 生成电路图文件和电路描述文件时，一定需要调用生成式工具，不然不能生成新的电路图文件和电路描述文件。
+    
+    ## 输出格式
+    你的输出可以是请求调用工具或回复用户电路图的生成情况。
+    
+    如果不需要调用工具，输出为JSON格式。严格遵循以下JSON schema格式，不要输出JSON以外的任何内容:
+    ```json
+    {{
+        "complete": 用户是否已经确认生成的电路图文件和电路描述符合他的要求？ 如果是取"true"，否则"false",
+        "message": 给用户的回复。如果`complete`为"false"总是额外地询问用户是否同意已经生成的电路图，否则告知用户任务已经完成，同时包含电路拓扑图CAD文件的保存路径和电路图拓扑图的描述。
+        "circuit_diagram_path": 电路拓扑图CAD文件的保存路径,
+        "circuit_picture_path": 电路拓扑图图片文件的保存路径,
+        "circuit_description": 电路图拓扑图的描述
+    }}
+    ```
+    
+    **重点注意**
+    - 输出最终满足用户需求的电路图文件和电路描述时，请在`message`字段中同时表明你的工作已经完成。
+    - 用简洁的语句回复用户，但是必须包含必要的信息，比如，你不能简单地回复"任务已经完成"，而是要告知用户任务已经完成，并且告知用户电路图文件和电路描述的保存路径。
+    - `circuit_diagram_path`和`circuit_picture_path`字段只能包含文件路径，不要有任何解释说明或者其他文字。
     """
 
     def __init__(
@@ -163,8 +193,11 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         Setup tools used in orchestrator
         """
-        return [FunctionTool(self.generate_circuit_diagram, 
-                             description=self.generate_circuit_diagram.__doc__ or "")]
+        return [
+            FunctionTool(self._generate_circuit_file, 
+                             description=self._generate_circuit_file.__doc__ or ""),
+            FunctionTool(self._read_file, description=self._read_file.__doc__ or "")
+        ]
     
     async def lazy_init(self) -> None:
         """Initialize the code executor if it has a start method.
@@ -379,88 +412,153 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         
         
         # preprocess the user request and extract coding tool parameters
+        exception_message = ""
+        if exception_message:
+            await self._model_context.add_message(
+                UserMessage(content=exception_message, source=agent_name)
+            )
+        try:       
+            response = None
+            # While loop for tool calls
+            while True:
+                token_limited_context = await self._model_context.get_messages()
+                response = await self._get_json_response(
+                    token_limited_context,
+                    self.validate_output_json,
+                    cancellation_token,
+                    max_tries=max_json_retries
+                )
+                
+                # is the respone a ToolCallEvent? not JSON
+                if isinstance(response, CreateResult):
+                    assert isinstance(response.content, List)
+                    yield ToolCallRequestEvent(content=response.content, source=self._name)
+                    await self._model_context.add_message(AssistantMessage(content=response.content, source=self._name))
+                    tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in response.content])    
+                    await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
+                    yield ToolCallExecutionEvent(content=tool_call_results, source=self._name)
+                else:
+                    break
+            
+            assert response
+            complete = response["complete"]
+            if complete:          
+                yield TextMessage(
+                    content=response["message"],
+                    source=agent_name,
+                    metadata={"finished": "yes"},
+                )   
+                return                        
+                
+            # assert not isinstance(delegated_result.content, str)
+        
+            # ''' Temporarily using the toolcall result as the response '''
+            # token_limited_context = await self._model_context.get_messages()
+            # delegated_result = await self._model_client.create(
+            #     token_limited_context,
+            #     json_output=True
+            #     if self._model_client.model_info["json_output"]
+            #     else False,
+            #     cancellation_token=cancellation_token
+            # )  
+            
+            # assert isinstance(delegated_result.content, str)
+            # yield TextMessage(
+            #     content = delegated_result.content,
+            #     source=agent_name,
+            #     metadata={"finished": "yes"},
+            # )   
+            assert isinstance(response, dict)
+            yield TextMessage(
+                content=response["message"],
+                source=agent_name,
+                metadata={"finished": "yes", "to_user": "yes"},
+            ) 
+            return
+        except AssertionError as e:
+            logger.error(f"Assertion Error in ElectricalDesignAgent: {e}")
+            raise RuntimeError(f"Electrical Design Agent生成电路图失败: {e}") from e
+        except Exception as e:
+            logger.error(f"Error in ElectricalDesignAgent: {e}")
+            raise RuntimeError(f"Electrical Design Agent生成电路图失败: {e}") from e
+    
+    async def _get_json_response(
+        self,
+        messages: List[LLMMessage],
+        validate_json: Callable[[Dict[str, Any]], bool],
+        cancellation_token: CancellationToken,
+        max_tries: int = 2,
+    ) -> Dict[str, Any] | CreateResult:
+        """Get a JSON response from the model client.
+        Args:
+            messages (List[LLMMessage]): The messages to send to the model client.
+            validate_json (callable): A function to validate the JSON response. The function should return True if the JSON response is valid, otherwise False.
+            cancellation_token (CancellationToken): A token to cancel the request if needed.
+        """
         retries = 0
         exception_message = ""
         try:
-            while retries < max_json_retries:
-                if exception_message:
+            while retries < max_tries:
+                # Re-initialize model context to meet token limit quota
+                await self._model_context.clear()
+                for msg in messages:
+                    await self._model_context.add_message(msg)
+                if exception_message != "":
                     await self._model_context.add_message(
-                        UserMessage(content=exception_message, source=agent_name)
+                        UserMessage(content=exception_message, source=self._name)
                     )
-                token_limited_context = await self._model_context.get_messages()
-                delegated_result = await model_client.create(
-                    token_limited_context,
+                token_limited_messages = await self._model_context.get_messages()
+
+                response = await self._model_client.create(
+                    token_limited_messages,
                     json_output=True
-                    if model_client.model_info["json_output"]
+                    if self._model_client.model_info["json_output"]
                     else False,
                     cancellation_token=cancellation_token,
-                    tools=self._tools
+                    tools=self._tools,
                 )
                 
-                try:                 
-                    assert not isinstance(delegated_result.content, str)
-                    await self._model_context.add_message(AssistantMessage(content=delegated_result.content, source=self._name))
-                    tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in delegated_result.content])
+                if not isinstance(response.content, str):
+                    return response
                     
-                    await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
-                    tool_call_result_text = tool_call_results[0].content
-                    # send the download notification to the client, the type "auto_download_file" is used to identify the download notification
-                    if not tool_call_results[0].is_error:
-                        self._chat_history.append(TextMessage(content=tool_call_result_text, source=agent_name))
-                        yield TextMessage(
-                            content = tool_call_result_text,
-                            source=agent_name,
-                            metadata={"finished": "yes"},
-                        )   
-                    
-                    ''' Temporarily using the toolcall result as the response '''
-                    # token_limited_context = await self._model_context.get_messages()
-                    # delegated_result = await self._model_client.create(
-                    #     token_limited_context,
-                    #     json_output=True
-                    #     if self._model_client.model_info["json_output"]
-                    #     else False,
-                    #     cancellation_token=cancellation_token
-                    # )  
-                    
-                    # assert isinstance(delegated_result.content, str)
-                    # yield TextMessage(
-                    #     content = delegated_result.content,
-                    #     source=agent_name,
-                    #     metadata={"finished": "yes"},
-                    # )   
-                    
-                    return
-                except AssertionError:
-                    logger.debug(f"Electrical Design Agent: {delegated_result.content}")
-                    exception_message = "你应该调用工具来生成电路拓扑图和对应的电路描述，但是你没有这么做。重来并一定要调用工具。"
-                    logger.debug(
-                        f"Electrical Design Agent未调用工具, 正在重试 ({retries}/{max_json_retries})"
+                try:
+                    json_response = json.loads(response.content)
+                    # Use the validate_json function to check the response
+                    if validate_json(json_response):
+                        return json_response
+                    else:
+                        exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
+                        logger.info(
+                            f"JSON响应的验证失败: {json_response}, 正在重试 ({retries}/{max_tries})"
+                        )
+                except json.JSONDecodeError as e:
+                    json_response = extract_json_from_string(response.content)
+                    if json_response is not None:
+                        if validate_json(json_response):
+                            return json_response
+                        else:
+                            exception_message = "JSON响应的验证失败，正在重试。你必须从响应中返回一个有效JSON对象。"
+                    else:
+                        exception_message = f"JSON响应的解析失败，正在重试。你必须从响应中返回一个有效JSON对象。 错误: {e}"
+                    logger.info(
+                        f"JSON响应的解析失败，正在重试 ({retries}/{max_tries})"
                     )
-                    retries += 1
-            else:
-                raise ValueError(f"Electrical Design Agent生成电路图失败，{max_json_retries}尝试后仍然没有没有调用电路拓扑图生成工具。")
+                retries += 1
+            logger.info("多次尝试后，无法获得有效的JSON响应")
+            raise RuntimeError(
+                "多次尝试后，无法获得有效的JSON响应"
+            )
         except Exception as e:
-            logger.error(f"Error in ElectricalDesignAgent: {e}")
-            raise
-    
-    def validate_tool_parameters(self, tool: ToolSchema) -> bool:
-        """Validate the tool parameters."""
-        if not tool.get("parameters", {}):
-            raise ValueError(f"Coding tool {tool.get('name')} does not accept any parameters")
-        tool_parameters: Dict[str, Any] = tool.get("parameters", {}).get("properties", {})
-        required_parameters = ("request", "save_path")
-        for parameter in required_parameters:
-            if parameter not in tool_parameters:
-                raise ValueError(f"Coding tool {tool.get('name')} does not accept the parameter {parameter}")
-
-        return True
+            logger.error(
+                f"Electrical Design Agent遇到错误: {e}"
+            )
+            raise 
         
     def validate_output_json(self, json_response: Dict[str, Any]) -> bool:
         """Validate the JSON response."""
         if not isinstance(json_response, dict):
             return False
-        required_keys = ["request", "save_path"]
+        required_keys = ["complete", "message", "circuit_diagram_path", "circuit_picture_path", "circuit_description"]
         for key in required_keys:
             if key not in json_response:
                 return False
@@ -545,7 +643,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         dict_res = await notify_to_download(str(self._work_root / self._work_relative_dir), file_and_directory_list, target_directory)
         return json.dumps(dict_res, ensure_ascii=False, indent=4)
     
-    async def generate_circuit_diagram(
+    async def _generate_circuit_file(
         self,
         circuit_requirments: Annotated[str, "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
         ) -> str:
@@ -580,6 +678,25 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
 STM32模块通过监测反馈信号，协调逆变器的运行、脉冲时序及输出调节，并通过驱动模块控制Q1–Q4的开关模式。
 该系统是一个基于三相交流输入的高压脉冲发生电源，其主要功能包括整流、逆变、变压升压、高压整流以及受控脉冲放电。
 """
+
+    async def _read_file(self, 
+        file_path: Annotated[str, "文件的路径或名字"], 
+    ):
+        """
+        读取文件，并返回文件内容。只有UTF-8编码的文件才会返回内容。
+        如果文件不是UTF-8编码，则返回错误信息。
+        """
+        full_file_path = os.path.abspath(file_path)
+        if not os.path.exists(full_file_path):
+            full_file_path = os.path.abspath(os.path.join(self._work_root / self._work_relative_dir, file_path))
+            if not os.path.exists(full_file_path):
+                return f"错误：文件 '{file_path}' 不存在。"
+        
+        try:
+            content = await read_file(full_file_path)
+            return content
+        except Exception as e:
+            return f"错误：读取文件 '{file_path}' 时发生异常：{str(e)}"
 
     def _to_config(self) -> ElectricalDesignAgentConfig:
         """Convert the agent's state to a configuration object."""

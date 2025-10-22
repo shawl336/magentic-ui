@@ -132,6 +132,48 @@ class ElectricalRequirementValidator(BaseChatAgent):
                 return message
         raise AssertionError("The stream should have returned the final result.")
 
+    async def on_messages_stream_foo(
+        self
+    ) -> Response:
+        """
+        For debug only, skip the token-consuming and time-consuming process
+        """
+        
+         # 保存文件
+        filtered_data = { 
+            "文档类型": "技术规格说明书", 
+            "项目名称": "广州地铁5号线牵引变流器项目", 
+            "直流高压等级数值": "DC 1500V", 
+            "列车最大运行速度": "160km/h", 
+            "列车最大结构速度": "80km/h", 
+            "列车平均初始加速度": "(0—120km/h)≥0.5m/s_2", 
+            "列车平均加速度": "(0—120km/h)≥0.5m/s_2", 
+            "列车平均旅行速度": "100km/h", 
+            "编组规格": "4M2T", 
+            "重量要求": "全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%",
+            "complete": True,
+            "message": "需求提取已经全部完成",
+        }
+        
+        logger.warning("In debug mode, using the foo on_messages_stream")          
+        file_name = "电气设计需求.json"
+        async with aiofiles.open(
+            self._work_root / self._work_relative_dir / file_name,
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
+            await f.write(json_str)
+            
+        response_text = f"需求提取已经全部完成，提取的字段为：{json.dumps(filtered_data, ensure_ascii=False, indent=4)}, json 格式保存在{file_name} 文件中。"
+        return Response(
+            chat_message=TextMessage(
+                content=response_text,
+                source=self.name,
+            ),
+            inner_messages=[],
+        )
+    
     async def on_messages_stream(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
@@ -163,6 +205,10 @@ class ElectricalRequirementValidator(BaseChatAgent):
         ]
         
         try:
+            # DEBUG
+            yield await self.on_messages_stream_foo()
+            return
+            
             # get json response result
             self._data_response = await self._get_json_response(
                 context_messages,

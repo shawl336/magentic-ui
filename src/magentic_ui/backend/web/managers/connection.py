@@ -199,7 +199,7 @@ class WebSocketManager:
 
             input_func: InputFuncType = self.create_input_func(run_id)
 
-            message: ChatMessage | AgentEvent | TeamResult | LLMCallEventMessage
+            message: ChatMessage | AgentEvent | TeamResult | LLMCallEventMessage | CheckpointEvent
             async for message in team_manager.run_stream(
                 task=task,
                 team_config=team_config,

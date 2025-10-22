@@ -12,6 +12,7 @@ from autogen_core import (
     ComponentModel,
     AgentRuntime,
     CancellationToken,
+    SingleThreadedAgentRuntime,
 )
 from autogen_agentchat import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
 from autogen_agentchat.base import ChatAgent, Team, TerminationCondition, TaskResult

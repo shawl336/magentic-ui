@@ -70,6 +70,7 @@ from ._sentinel_prompts import (
     validate_sentinel_condition_check_json,
 )
 from ._utils import is_accepted_str, extract_json_from_string
+from loguru import logger
 import logging
 from autogen_agentchat import TRACE_LOGGER_NAME
 
@@ -661,6 +662,7 @@ class Orchestrator(BaseGroupChatManager):
                 # Stop the group chat and reset the termination conditions and turn count.
                 await self._termination_condition.reset()
                 return
+                
         await self._orchestrate_step(ctx.cancellation_token)
     
     async def _orchestrate_step(self, cancellation_token: CancellationToken) -> None:
