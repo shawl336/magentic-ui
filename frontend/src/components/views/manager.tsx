@@ -490,7 +490,7 @@ export const SessionManager: React.FC = () => {
 
       <div className="flex flex-1 relative">
         <div
-          className={`absolute left-0 top-1 h-full transition-all duration-200 ease-in-out ${
+          className={`absolute left-0 top-0 h-full transition-all duration-200 ease-in-out ${
             isSidebarOpen ? "w-77" : "w-0"
           }`}
         >

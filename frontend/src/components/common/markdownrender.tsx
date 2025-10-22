@@ -225,7 +225,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           code: ({ node, className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "");
             const language = match ? match[1] : "";
-            const inline = !language;
+            
+            // 检查是否是真正的代码块（有语言标识或者是多行代码）
+            const isCodeBlock = language || (typeof children === 'string' && children.includes('\n'));
+            const inline = !isCodeBlock;
+            
             if (inline) {
               return (
                 <code
