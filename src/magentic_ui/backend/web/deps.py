@@ -105,6 +105,9 @@ async def init_managers(
         )
         logger.info("Connection manager initialized")
         
+        import os
+        config_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        config_file = os.path.join(config_path, "docker", "docx_editor", "default.json")
         # Initialize docker manager
         _docx_editor_manager = DockerManager(
             image="onlyoffice/documentserver",
@@ -114,8 +117,12 @@ async def init_managers(
                 "/app/onlyoffice/DocumentServer/data": {"bind": "/var/www/onlyoffice/Data", "mode": "rw"},
                 "/app/onlyoffice/DocumentServer/lib": {"bind": "/var/lib/onlyoffice", "mode": "rw"},
                 "/app/onlyoffice/DocumentServer/db": {"bind": "/var/lib/postgresql", "mode": "rw"},
+                config_file: {"bind": "/etc/onlyoffice/documentserver/default.json", "mode": "rw"},
             },
             ports={"80/tcp": "18099"},
+            environment={
+                "JWT_ENABLED": "false"
+            },
             detach=True,
             stop_container=True,
             tty=True,
