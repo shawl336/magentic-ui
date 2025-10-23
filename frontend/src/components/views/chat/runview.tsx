@@ -101,7 +101,7 @@ const RunView: React.FC<RunViewProps> = ({
 
   // Track if user was at bottom before new messages
   const wasAtBottomRef = useRef(true);
-  
+
   // Check if user is at bottom before messages change
   useEffect(() => {
     if (threadContainerRef.current) {
@@ -430,7 +430,7 @@ const RunView: React.FC<RunViewProps> = ({
                     // delay for 100ms
                     await new Promise((resolve) => setTimeout(resolve, 100));
                   }
-                } catch {}
+                } catch { }
               }
             }
             continue;
@@ -454,11 +454,11 @@ const RunView: React.FC<RunViewProps> = ({
                       await new Promise((resolve) => setTimeout(resolve, 100));
                     }
                   }
-                } catch {}
+                } catch { }
               }
             }
           }
-        } catch {}
+        } catch { }
       }
 
       if (
@@ -549,6 +549,26 @@ const RunView: React.FC<RunViewProps> = ({
   const isPlanMsg =
     lastMessage && messageUtils.isPlanMessage(lastMessage.config.metadata);
 
+  // Check if sentinel is currently sleeping
+  const isSentinelSleeping = React.useMemo(() => {
+    if (run.status !== "active") return false;
+
+    // Find the most recent sentinel-related status message
+    const sentinelStatusMessages = run.messages.filter(
+      (msg) => msg.config.metadata?.type === "sentinel_status" ||
+        msg.config.metadata?.type === "sentinel_sleeping" ||
+        msg.config.metadata?.type === "sentinel_complete"
+    );
+
+    if (sentinelStatusMessages.length === 0) return false;
+
+    const lastStatusMsg = sentinelStatusMessages[sentinelStatusMessages.length - 1];
+
+    // We're sleeping if the last status message is sentinel_sleeping
+    // We're NOT sleeping if it's sentinel_status (checking) or sentinel_complete
+    return lastStatusMsg.config.metadata?.type === "sentinel_sleeping";
+  }, [run.messages, run.status]);
+
   // Smart scrolling for approval buttons: only scroll if user is near the bottom
   useEffect(() => {
     if (run.status === "awaiting_input" && buttonsContainerRef.current && threadContainerRef.current) {
@@ -557,7 +577,7 @@ const RunView: React.FC<RunViewProps> = ({
         const container = threadContainerRef.current;
         if (container) {
           const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100; // 100px threshold
-          
+
           // Only scroll to approval buttons if user is near the bottom
           if (isNearBottom) {
             buttonsContainerRef.current?.scrollIntoView({
@@ -577,15 +597,14 @@ const RunView: React.FC<RunViewProps> = ({
     >
       {/* Messages section */}
       <div
-        className={`items-start relative flex flex-col h-full ${
-          showDetailViewer &&
-          novncPort !== undefined &&
-          !isDetailViewerMinimized
+        className={`items-start relative flex flex-col h-full ${showDetailViewer &&
+            novncPort !== undefined &&
+            !isDetailViewerMinimized
             ? detailViewerExpanded
               ? "w-0"
-              : "w-[40%]"
+              : "w-[50%]"
             : "w-full"
-        } transition-all duration-300`}
+          } transition-all duration-300`}
       >
         {/* Thread Section - use flex-1 for height, but remove overflow-y-auto */}
         <div className="w-full flex-1">
@@ -634,6 +653,7 @@ const RunView: React.FC<RunViewProps> = ({
                       isLatestPlan ? handleRegeneratePlan : undefined
                     }
                     forceCollapsed={shouldForceCollapse}
+                    allMessages={localMessages}
                   />
                 </div>
               );
@@ -646,7 +666,8 @@ const RunView: React.FC<RunViewProps> = ({
                 run.status,
                 run.error_message,
                 run.team_result?.task_result?.stop_reason,
-                run.input_request
+                run.input_request,
+                isSentinelSleeping
               )}
             </div>
           </div>
@@ -720,9 +741,8 @@ const RunView: React.FC<RunViewProps> = ({
         novncPort !== undefined &&
         !isDetailViewerMinimized && (
           <div
-            className={`${
-              detailViewerExpanded ? "w-full" : "w-[60%]"
-            } self-start sticky top-0 h-full`}
+            className={`${detailViewerExpanded ? "w-full" : "w-[50%]"
+              } self-start sticky top-0 h-full`}
           >
             <div className="h-full flex-1">
               <DetailViewer
