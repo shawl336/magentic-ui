@@ -50,6 +50,7 @@ from ._prompts import (
     urban_rail_traction_system_specification_dict,
 )
 
+import asyncio
 from loguru import logger
 from docxtpl import DocxTemplate
 from pathlib import Path
@@ -219,7 +220,8 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         For debug only, skip the token-consuming and time-consuming process
         """
         logger.warning("In debug mode, using the foo on_messages_stream")          
-        
+        await asyncio.sleep(2)  # Sleep for 2 seconds
+
         # 保存文件
         self.generator = GenDocxUseTemplate(
             os.path.join(

@@ -1,6 +1,7 @@
 from autogen_agentchat.agents import BaseChatAgent
 import os
 import aiofiles
+import asyncio
 
 from typing import (
     Any,
@@ -138,6 +139,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
         """
         For debug only, skip the token-consuming and time-consuming process
         """
+        await asyncio.sleep(2)  # Sleep for 2 seconds
         
          # 保存文件
         filtered_data = { 

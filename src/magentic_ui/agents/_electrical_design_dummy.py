@@ -1,7 +1,18 @@
 import asyncio
 from pathlib import Path
 import shutil
-from typing import AsyncGenerator, List, Sequence, Optional, Dict, Any, Mapping, Callable
+from timeit import Timer
+from typing import (
+    AsyncGenerator, 
+    List,
+    Sequence,
+    Optional,
+    Dict,
+    Any,
+    Mapping,
+    Callable,
+    ClassVar
+)
 from typing_extensions import Annotated
 import json, os
 from autogen_core.tools import Workbench
@@ -96,7 +107,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     成功的生成电路图后，该智能体返回电路图的描述，以及生成的图片格式的电路拓扑图和CAD(.dwg)格式的电路拓扑图文件路径。
     """
 
-    system_prompt_template = """
+    system_prompt_template: ClassVar[str] = """
     你是{name}, 一个使用工具进行电气设计的智能体，但是你本身不做任何主观电气设计。
 
     今天的日期是:{date_today}
@@ -106,13 +117,14 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     电路图的生成是一个迭代的过程，你需要和用户进行多轮交互，直到用户确认并同意生成的电路图符合他的要求。在每次交互中，你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
     
     为了帮助用户更好地生成符合要求的电路图，首先思考如下问题:
-    1. 用户是否提供了需求文件而非只有直接文字描述？ 如果是的，一定要使用工具先读取需求文件内容才能知道用户的完整需求。
+    1. 用户是否提供了需求文件，而且还没有读取需求文件内容？ 如果是的，一定要使用工具先读取需求文件内容才能知道用户的完整需求。否则，对于同一个需求文件如果已经读取了需求文件内容，且文件没有更新，则不用再次读取需求文件内容，直接使用之前读取到的内容。
     2. 是否已经有电路图文件了(包含用户提供的或者之前迭代过程中生成的)？ 如果答案是否定的，直接根据用户的请求生成电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。
     3. 用户是否已经确认生成的电路图文件和电路描述符合他的要求(额外地，"继续"或者"下一步"等同义表达也表示用户已经确认生成的电路图文件和电路描述符合他的要求)？ 如果答案是肯定的，输出已经满足用户需求的电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。 
     
     **重点注意**
     - 你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
     - 不要添加任何主观意见，不要添加任何解释，不要添加任何说明，不要添加任何备注。
+    - 对于没有提到的信息，一定不能杜撰！比如，如果没有需求文件，一定不能杜撰一个需求文件，如实回答或者不要提及。
     - 用户的请求可能是以文件路径的形式给出的，你需要读取文件内容，并根据文件内容生成电路拓扑图和对应的电路描述。
     - 生成电路图文件和电路描述文件时，一定需要调用生成式工具，不然不能生成新的电路图文件和电路描述文件。
     
@@ -123,7 +135,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     ```json
     {{
         "complete": 用户是否已经确认生成的电路图文件和电路描述符合他的要求？ 如果是取"true"，否则"false",
-        "message": 给用户的回复。如果`complete`为"false"总是额外地询问用户是否同意已经生成的电路图，否则告知用户任务已经完成，同时包含电路拓扑图CAD文件的保存路径和电路图拓扑图的描述。
+        "message": 给用户的回复。如果`complete`为"false"总是额外地询问用户是否同意已经生成的电路图，否则告知用户任务已经完成。如果有生成电路图CAD文件和电路描述文件，同时包含电路拓扑图CAD文件的保存路径和电路图拓扑图的描述。
         "circuit_diagram_path": 电路拓扑图CAD文件的保存路径,
         "circuit_picture_path": 电路拓扑图图片文件的保存路径,
         "circuit_description": 电路图拓扑图的描述
@@ -134,6 +146,14 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     - 输出最终满足用户需求的电路图文件和电路描述时，请在`message`字段中同时表明你的工作已经完成。
     - 用简洁的语句回复用户，但是必须包含必要的信息，比如，你不能简单地回复"任务已经完成"，而是要告知用户任务已经完成，并且告知用户电路图文件和电路描述的保存路径。
     - `circuit_diagram_path`和`circuit_picture_path`字段只能包含文件路径，不要有任何解释说明或者其他文字。
+    - 对于没有提到的信息，一定不能杜撰！比如，如果没有生成文件，一定不能杜撰一个文件路径，如实回答或者不要提及。
+    """
+
+    RESPONSE_TEMPLATE = """
+    {message}
+    
+    电路描述:
+    {circuit_description}
     """
 
     def __init__(
@@ -304,13 +324,22 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                     ),
                 ):
                     metadata = getattr(msg, "metadata", {})
-                    metadata = {
-                        **metadata,
-                        # Display in UI
-                        "internal": "no",
-                        # Part of a plan step
-                        "type": "progress_message",
-                    }
+                    if "internal" not in metadata:
+                        # If internal is not set, set it to "no"
+                        metadata = {
+                            **metadata,
+                            # Display in UI
+                            "internal": "no",
+                            # Part of a plan step
+                            "type": "progress_message",
+                        }
+                    else:
+                        metadata = {
+                            **metadata,
+                            # Part of a plan step
+                            "type": "progress_message",
+                        }
+
                     finished = metadata.get("finished", "")
                     setattr(msg, "metadata", metadata)
 
@@ -436,7 +465,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                     await self._model_context.add_message(AssistantMessage(content=response.content, source=self._name))
                     tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in response.content])    
                     await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
-                    yield ToolCallExecutionEvent(content=tool_call_results, source=self._name)
+                    yield ToolCallExecutionEvent(content=tool_call_results, source=self._name, metadata={"internal": "yes"})
                 else:
                     break
             
@@ -444,7 +473,9 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             complete = response["complete"]
             if complete:          
                 yield TextMessage(
-                    content=response["message"],
+                    content=self.RESPONSE_TEMPLATE.format(
+                        message=response["message"], 
+                        circuit_description=response["circuit_description"]),
                     source=agent_name,
                     metadata={"finished": "yes"},
                 )   
