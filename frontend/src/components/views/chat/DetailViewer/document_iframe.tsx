@@ -18,6 +18,17 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
+  const getServerHost = () => {
+          // 优先使用当前页面的主机名，这样支持不同部署环境
+          const currentHost = window.location.hostname;
+          // 如果是localhost或127.0.0.1，使用Docker bridge IP
+          if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+            return '172.17.0.1';
+          }
+          // 否则使用当前主机名
+          return currentHost;
+        };
+  const IP_ADDRESS = getServerHost();
 
   useEffect(() => {
     if (!docUrl || !containerRef.current) return;
@@ -36,7 +47,9 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
     }
 
     // 通过前端proxy提供文档 - 使用宿主机IP，这样OnlyOffice容器能访问
-    const documentUrl = `http://172.17.0.1:8000/api/document/${apiPath}`;
+    // 添加时间戳参数来破坏缓存，确保获取最新版本
+    const timestamp = Date.now();
+    const documentUrl = `http://${IP_ADDRESS}:8000/api/document/${apiPath}?t=${timestamp}`;
     const documentKey = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // 动态加载OnlyOffice API
@@ -48,7 +61,7 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
         }
 
         const script = document.createElement('script');
-        script.src = 'http://172.17.0.2/web-apps/apps/api/documents/api.js';
+        script.src = `http://${IP_ADDRESS}:18099/web-apps/apps/api/documents/api.js`;
         script.onload = () => resolve();
         script.onerror = () => reject(new Error('Failed to load OnlyOffice API'));
         document.head.appendChild(script);
@@ -72,10 +85,22 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
           editorConfig: {
             mode: 'edit',
             lang: 'zh-CN',
-            callbackUrl: 'http://172.17.0.1:8081/api/callback',
+            callbackUrl: `http://${IP_ADDRESS}:8081/api/callback?filepath=${encodeURIComponent(apiPath)}`,
             user: {
               id: user?.email || '游客',
               name: user?.email?.split('@')[0] || '游客',
+            },
+            customization: {
+              forcesave: true, // 启用强制保存，确保修改及时同步
+              autosave: true, // 启用自动保存
+              // 添加保存提示，让用户知道修改会被保存
+              showHeader: true,
+              showFooter: true,
+            },
+            // 配置保存行为
+            coEditing: {
+              mode: "fast", // 快速协作模式
+              change: true, // 允许实时变更
             },
           },
           height: '100%',
