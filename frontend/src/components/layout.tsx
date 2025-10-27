@@ -81,7 +81,7 @@ const MagenticUILayout = ({
                 : theme.defaultAlgorithm,
           }}
         >
-          <main className="flex-1 p-1 text-primary" style={{ height: "100%" }}>
+          <main className="flex-1 text-primary" style={{ height: "100%" }}>
             <SessionManager />
           </main>
         </ConfigProvider>
