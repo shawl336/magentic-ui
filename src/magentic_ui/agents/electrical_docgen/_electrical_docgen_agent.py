@@ -255,8 +255,8 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
         
         # DEBUG
-        # yield await self.on_messages_stream_foo()
-        # return
+        yield await self.on_messages_stream_foo()
+        return
         
         if self._state == "planning":
             # first step: jugement is contain all requirement message

@@ -108,12 +108,18 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
       runStatus === "pausing" ||
       inputRequest?.input_type === "approval";
     const [mcpServers, setMcpServers] = React.useState<MCPServerInfo[]>([]);
-    // Handle textarea auto-resize
+    const [showScrollbar, setShowScrollbar] = React.useState(false);
+    
+    // Handle textarea auto-resize and scrollbar visibility
     React.useEffect(() => {
       if (textAreaRef.current) {
         textAreaRef.current.style.height = textAreaDefaultHeight;
         const scrollHeight = textAreaRef.current.scrollHeight;
         textAreaRef.current.style.height = `${scrollHeight}px`;
+        
+        // Determine if we need to show scrollbar (5 lines = approximately 120px)
+        const fiveLinesHeight = 120;
+        setShowScrollbar(scrollHeight > fiveLinesHeight);
       }
       if (textAreaDivRef.current) {
         textAreaDivRef.current.style.height = textAreaDefaultHeight;
@@ -307,6 +313,7 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
         setFileList([]);
         setRelevantPlans([]);
         setAttachedPlan(null);
+        setShowScrollbar(false);
       }
       if (textAreaDivRef.current) {
         textAreaDivRef.current.style.height = textAreaDefaultHeight;
@@ -763,10 +770,10 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
                       ? "bg-[#444444] text-white"
                       : "bg-white text-black"
                       } ${isInputDisabled ? "cursor-not-allowed" : ""
-                      } focus:outline-none`}
+                      } focus:outline-none ${showScrollbar ? "scroll" : ""}`}
                     style={{
                       maxHeight: "120px",
-                      overflowY: "auto",
+                      overflowY: showScrollbar ? "auto" : "hidden",
                       minHeight: "50px",
                     }}
                     placeholder={

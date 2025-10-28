@@ -29,6 +29,9 @@ const ContentHeader = ({
   const [isEmailModalOpen, setIsEmailModalOpen] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
+  // DEMO: 隐藏右侧用户登录与设置按钮；正式版移除此开关或改为配置项
+  const DEMO_HIDE_USER_AND_SETTINGS = true;
+
   return (
     <div className="sticky top-0 pl-2 pr-4 bg-gradient-to-r from-gray-200 via-gray-100 to-secondary shadow-lg border-b border-gray-400/30 backdrop-blur-sm">
       <div className="flex h-16 items-center justify-between">
@@ -72,53 +75,60 @@ const ContentHeader = ({
         </div>
 
         {/* User Profile and Settings */}
-        <div className="flex items-center space-x-4">
-          {/* User Profile */}
-          {user && (
-            <Tooltip title="View or update your profile">
-              <div
-                className="flex items-center space-x-2 cursor-pointer hover:bg-gray-400/20 rounded-lg p-1 transition-colors"
-                onClick={() => setIsEmailModalOpen(true)}
-              >
-                {user.avatar_url ? (
-                  <img
-                    className="h-8 w-8 rounded-full"
-                    src={user.avatar_url}
-                    alt={user.name}
-                  />
-                ) : (
-                  <div className="bg-gray-500 h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold hover:bg-gray-600 transition-colors">
-                    {user.name?.[0]}
-                  </div>
-                )}
-              </div>
-            </Tooltip>
-          )}
+        {!DEMO_HIDE_USER_AND_SETTINGS && (
+          <div className="flex items-center space-x-4">
+            {/* User Profile */}
+            {user && (
+              <Tooltip title="View or update your profile">
+                <div
+                  className="flex items-center space-x-2 cursor-pointer hover:bg-gray-400/20 rounded-lg p-1 transition-colors"
+                  onClick={() => setIsEmailModalOpen(true)}
+                >
+                  {user.avatar_url ? (
+                    <img
+                      className="h-8 w-8 rounded-full"
+                      src={user.avatar_url}
+                      alt={user.name}
+                    />
+                  ) : (
+                    <div className="bg-gray-500 h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold hover:bg-gray-600 transition-colors">
+                      {user.name?.[0]}
+                    </div>
+                  )}
+                </div>
+              </Tooltip>
+            )}
 
-          {/* Settings Button */}
-          <div className="text-primary">
-            <Tooltip title="Settings">
-              <Button
-                variant="tertiary"
-                size="sm"
-                icon={<Settings className="h-8 w-8" />}
-                onClick={() => setIsSettingsOpen(true)}
-                className="!px-0 transition-colors hover:text-gray-700 hover:bg-gray-400/30 rounded-lg"
-                aria-label="Settings"
-              />
-            </Tooltip>
+            {/* Settings Button */}
+            <div className="text-primary">
+              <Tooltip title="Settings">
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  icon={<Settings className="h-8 w-8" />}
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="!px-0 transition-colors hover:text-gray-700 hover:bg-gray-400/30 rounded-lg"
+                  aria-label="Settings"
+                />
+              </Tooltip>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      <SignInModal
-        isVisible={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-      />
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      {/* DEMO: 隐藏时不渲染弹窗，避免误触；正式版可移除条件 */}
+      {!DEMO_HIDE_USER_AND_SETTINGS && (
+        <>
+          <SignInModal
+            isVisible={isEmailModalOpen}
+            onClose={() => setIsEmailModalOpen(false)}
+          />
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 };
