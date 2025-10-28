@@ -269,8 +269,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="w-full">
                 <Tooltip title={t("Create New Session")}>
                   <Button
-                    className="w-full"
-                    variant="primary"
+                    className="w-full bg-transparent border border-dashed border-red-800 dark:border-red-800 text-primary hover:bg-red-50/10 dark:hover:bg-red-900/10"
+                    variant="tertiary"
                     size="md"
                     icon={<Plus className="w-4 h-4" />}
                     onClick={() => onEditSession()}

@@ -170,6 +170,48 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       ? content.slice(0, maxLength) + "..."
       : content;
 
+  // 检查是否是纯文本（不包含 Markdown 语法）
+  // 如果是纯文本且包含大量中文，直接渲染为普通段落
+  const isPlainText = !fileExtension && 
+                      /[\u4e00-\u9fa5]/.test(content) && 
+                      !content.match(/^#{1,6}\s/) && // 不是标题
+                      !content.match(/^\s*[-*+]\s/) && // 不是列表
+                      !content.match(/^\s*>\s/) && // 不是引用
+                      !content.match(/```/) && // 不包含代码块标记
+                      !content.match(/^```/m); // 不是代码块开头
+
+  // 如果是纯文本，直接渲染为段落，不经过 Markdown 解析
+  if (isPlainText) {
+    return (
+      <div
+        className="prose w-full "
+        style={{
+          color,
+          fontSize: "0.85rem",
+          overflowWrap: "break-word",
+          wordWrap: "break-word",
+          wordBreak: "break-word",
+          overflowX: "auto",
+          maxWidth: "100%",
+          position: "relative",
+        }}
+      >
+        {indented && (
+          <div
+            style={{
+              position: "absolute",
+              left: "1.2rem",
+              top: 0,
+              bottom: 0,
+              width: "2px",
+            }}
+          />
+        )}
+        <p style={{ color, whiteSpace: "pre-wrap" }}>{content}</p>
+      </div>
+    );
+  }
+
   return (
     <div
       className="prose w-full "
@@ -225,12 +267,27 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           code: ({ node, className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "");
             const language = match ? match[1] : "";
+            const childrenStr = String(children);
             
-            // 检查是否是真正的代码块（有语言标识或者是多行代码）
-            const isCodeBlock = language || (typeof children === 'string' && children.includes('\n'));
-            const inline = !isCodeBlock;
+            // 检查是否是真正的代码块
+            // 有语言标识，或者是多行且明显是代码内容（包含常见代码特征）
+            const hasCodeMarkers = /[{};=]/.test(childrenStr) || 
+                                   /^(import|export|def|function|class|return|const|let|var)\s/.test(childrenStr.trim());
+            const isCodeBlock = !!language || (childrenStr.includes('\n') && hasCodeMarkers);
             
-            if (inline) {
+            if (!isCodeBlock) {
+              // 如果不在代码块中，检查是否包含中文、句号、问号等，如果是，说明是普通文本
+              // 应该渲染为普通段落而不是代码
+              const isNormalText = /[\u4e00-\u9fa5]/.test(childrenStr) || 
+                                   /[。？！，；：]/.test(childrenStr) ||
+                                   !/[{}[\]]/.test(childrenStr);
+              
+              if (isNormalText && !language) {
+                // 普通文本，直接渲染为段落
+                return <p style={{ color, whiteSpace: "pre-wrap" }}>{children}</p>;
+              }
+              
+              // 内联代码
               return (
                 <code
                   style={{
@@ -251,7 +308,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             return (
               <CodeBlock
                 language={language}
-                value={String(children).replace(/\n$/, "")}
+                value={childrenStr.replace(/\n$/, "")}
               />
             );
           },

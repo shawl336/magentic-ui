@@ -40,7 +40,33 @@ const Provider = ({ children }: any) => {
   const updateDarkMode = (darkMode: string) => {
     setDarkMode(darkMode);
     setLocalStorage("darkmode", darkMode, false);
+    // DEMO: 同步 html 根元素类，避免组件未挂载前类名不同步
+    if (typeof document !== "undefined") {
+      const root = document.documentElement;
+      if (darkMode === "dark") {
+        root.classList.add("dark");
+        root.classList.remove("light");
+      } else {
+        root.classList.remove("dark");
+        root.classList.add("light");
+      }
+    }
   };
+
+  // DEMO: 首次挂载时强制使用 dark，并同步 html 类与本地存储
+  React.useEffect(() => {
+    try {
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        root.classList.add("dark");
+        root.classList.remove("light");
+      }
+      setLocalStorage("darkmode", "dark", false);
+      setDarkMode("dark");
+    } catch (e) {
+      // no-op in demo
+    }
+  }, []);
 
   // Modify logic here to add your own authentication
   const initUser = {

@@ -356,7 +356,7 @@ const ImageThumbnail = memo<{ file: FileInfo }>(({ file }) => {
 
   if (isLoading) {
     return (
-      <div className="w-full h-40 flex items-center justify-center bg-gray-50">
+      <div className="w-1/3 h-80 flex items-center justify-center bg-transparent">
         <div className="animate-pulse bg-gray-200 w-8 h-8 rounded"></div>
       </div>
     );
@@ -364,14 +364,14 @@ const ImageThumbnail = memo<{ file: FileInfo }>(({ file }) => {
 
   if (hasError) {
     return (
-      <div className="w-full h-40 flex items-center justify-center bg-gray-50">
+      <div className="w-1/3 h-80 flex items-center justify-center bg-transparent">
         <ImageIcon className="w-8 h-8 text-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="w-full h-40 bg-gray-50 flex items-center justify-center overflow-hidden">
+    <div className="w-0.3 h-80 bg-transparent flex items-center justify-center overflow-hidden">
       <img
         src={thumbnailUrl}
         alt={file.name}
@@ -406,10 +406,13 @@ const DownloadButton = memo<{ file: FileInfo }>(({ file }) => {
   return (
     <button
       onClick={handleDownload}
-      className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 hover:bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+      className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-700/90 shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
       title="Download file"
     >
-      <Download size={16} className="text-gray-700" />
+      <Download 
+        size={16} 
+        className="text-gray-700 dark:text-gray-400"
+      />
     </button>
   );
 });
@@ -427,8 +430,8 @@ const FileCard = memo<FileCardProps>(({ file, onFileClick }) => {
         onClick={() => onFileClick(file)}
       >
         <ImageThumbnail file={file} />
-        <div className="p-2 bg-white border-t w-full">
-          <span className="text-xs truncate w-full block" title={file.name}>
+        <div className="p-2 bg-transparent border-t border-gray-200 dark:border-gray-600 w-full text-center">
+          <span className="text-xs w-full block text-white whitespace-normal break-words" title={file.name}>
             {file.name}
           </span>
         </div>
@@ -578,7 +581,7 @@ const RenderFile: React.FC<RenderFileProps> = ({ message, sessionId }) => {
 
   return (
     <div className="mt-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-1 gap-2 w-1/2">
         {files.map((file, index) => (
           <FileCard key={index} file={file} onFileClick={handleFileClick} />
         ))}
