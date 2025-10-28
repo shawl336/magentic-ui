@@ -736,7 +736,7 @@ export default function ChatView({
       const uploadedFilesList = processedFiles.filter((f) => f.uploaded);
       if (uploadedFilesList.length > 0) {
         const filesList = uploadedFilesList.map((f) => f.name).join(", ");
-        enhancedResponse = `Uploaded files: ${filesList}\n\n${response}`;
+        enhancedResponse = `${t("Uploaded files:")} ${filesList}\n\n${response}`;
       }
 
       const responseJson = {
@@ -1007,7 +1007,7 @@ export default function ChatView({
       const uploadedFilesList = processedFiles.filter((f) => f.uploaded);
       if (uploadedFilesList.length > 0) {
         const filesList = uploadedFilesList.map((f) => f.name).join(", ");
-        enhancedQuery = `Uploaded files: ${filesList}\n\n${query}`;
+        enhancedQuery = `${t("Uploaded files:")} ${filesList}\n\n${query}`;
       }
 
       var planString = plan ? convertPlanStepsToJsonString(plan.steps) : "";

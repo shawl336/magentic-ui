@@ -2,7 +2,24 @@ import { RcFile } from "antd/es/upload";
 import { IStatus } from "./types/app";
 
 export const getServerUrl = () => {
-  return process.env.GATSBY_API_URL || "/api";
+  // If GATSBY_API_URL is explicitly set, use it
+  if (process.env.GATSBY_API_URL) {
+    return process.env.GATSBY_API_URL;
+  }
+  
+  // For server-side rendering, use relative path
+  if (typeof window === "undefined") {
+    return "/api";
+  }
+  
+  // Use the current window location to build the API URL
+  // This ensures the frontend always calls the API on the same host/port it's served from
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+  
+  const baseUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
+  return `${baseUrl}/api`;
 };
 
 export function setCookie(name: string, value: any, days: number) {

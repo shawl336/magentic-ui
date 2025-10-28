@@ -90,20 +90,78 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(lifespan=lifespan, debug=True)
 
 # CORS middleware configuration
+# Dynamically compute allowed origins based on runtime host/port and common dev hosts
+_host = os.environ.get("_HOST", "127.0.0.1")
+_port = os.environ.get("_PORT", "8081")
+
+_allowed_origins = {
+    # Common dev servers
+    "http://localhost:8000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8000",
+    "http://0.0.0.0:8000",
+    "http://0.0.0.0:8001",
+}
+
+def _get_local_ips() -> list[str]:
+    ips: list[str] = []
+    try:
+        import socket
+        # Primary outward-facing IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ips.append(s.getsockname()[0])
+        finally:
+            try:
+                s.close()  # type: ignore[name-defined]
+            except Exception:
+                pass
+        # Hostname resolved IPs
+        try:
+            hostname_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+            for ip in hostname_ips:
+                if ip not in ips:
+                    ips.append(ip)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return ips
+
+def _add_origin(host: str, port: str) -> None:
+    try:
+        _allowed_origins.add(f"http://{host}:{port}")
+    except Exception:
+        pass
+
+# Add the configured host/port
+_add_origin(_host, _port)
+
+# If binding to 0.0.0.0 or localhost variants, add the typical aliases for the same port
+if _host in {"0.0.0.0", "127.0.0.1", "localhost"}:
+    for _h in ("127.0.0.1", "localhost", "0.0.0.0"):
+        _add_origin(_h, _port)
+
+# Also allow direct access to common docker bridge IPs when applicable
+_add_origin("172.17.0.1", _port)
+
+# Add server LAN IPs so clients visiting http://<lan-ip>:<port> are allowed
+for _ip in _get_local_ips():
+    _add_origin(_ip, _port)
+
+# Add any extra origins from env (comma-separated), e.g. http://192.168.1.10:3000
+_extra = os.environ.get("EXTRA_CORS_ORIGINS", "").strip()
+if _extra:
+    for origin in [o.strip() for o in _extra.split(",") if o.strip()]:
+        try:
+            _allowed_origins.add(origin)
+        except Exception:
+            pass
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8000",
-        "http://localhost:8001",
-        "http://localhost:8081",
-        "http://127.0.0.1:8000",
-        "http://172.17.0.1:8001",
-        "http://127.0.0.1:8081",
-        "http://0.0.0.0:8000",
-        "http://0.0.0.0:8001",
-        "http://0.0.0.0:8081",
-        "*",
-    ],
+    allow_origins=list(_allowed_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
