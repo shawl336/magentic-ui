@@ -13,6 +13,7 @@ import { ClickableImage } from "../views/atoms";
 import { AgentMessageConfig } from "../types/datamodel";
 import { getServerUrl } from "../utils";
 import DocumentIframe from "../views/chat/DetailViewer/document_iframe";
+import { useTranslation } from "react-i18next";
 
 // Types
 type FileType = "image" | "code" | "text" | "pdf" | "docx";
@@ -111,6 +112,7 @@ const FileModal: React.FC<FileModalProps> = ({
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [processedContent, setProcessedContent] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     // Add escape key handler
@@ -162,7 +164,7 @@ const FileModal: React.FC<FileModalProps> = ({
           // Only process the first chunk to avoid unnecessary string operations
           finalContent =
             content.slice(0, maxLength) +
-            "\n\n... Content truncated. File is too large to display completely. Please download the file to view all content ...";
+            t("\n\n... Content truncated. File is too large to display completely. Please download the file to view all content ...");
         }
       }
 
@@ -170,7 +172,7 @@ const FileModal: React.FC<FileModalProps> = ({
     } catch (error) {
       console.error("Error processing file content:", error);
       setProcessedContent(
-        "Error processing file content. The file may be too large to display."
+        t("Error processing file content. The file may be too large to display.")
       );
     } finally {
       setIsLoading(false);
@@ -196,7 +198,7 @@ const FileModal: React.FC<FileModalProps> = ({
       return (
         <div className="flex flex-col items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <p className="mt-4 text-gray-600">Loading file content...</p>
+          <p className="mt-4 text-gray-600">{t("Loading file content...")}</p>
         </div>
       );
     }
@@ -221,10 +223,10 @@ const FileModal: React.FC<FileModalProps> = ({
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <p className="mt-4 text-gray-600">Processing large file...</p>
+              <p className="mt-4 text-gray-600">{t("Processing large file...")}</p>
             </div>
           ) : processedContent === null ? (
-            <div className="p-4 text-gray-500">No content available</div>
+            <div className="p-4 text-gray-500">{t("No content available")}</div>
           ) : (
             <MarkdownRenderer
               content={processedContent}
@@ -261,8 +263,8 @@ const FileModal: React.FC<FileModalProps> = ({
     // For unknown file types, show a message
     return (
       <div className="p-4 text-center">
-        <p>Unable to preview this file type.</p>
-        <p>Filename: {file.name}</p>
+        <p>{t("Unable to preview this file type.")}</p>
+        <p>{t("Filename:")} {file.name}</p>
       </div>
     );
   };
@@ -288,7 +290,7 @@ const FileModal: React.FC<FileModalProps> = ({
                 href={downloadUrl}
                 download={file.name}
                 className="p-1 rounded-full hover:bg-gray-200 text-black flex items-center justify-center"
-                title="Download file"
+                title={t("Download file")}
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download size={18} />
@@ -297,14 +299,14 @@ const FileModal: React.FC<FileModalProps> = ({
             {/* <button
               onClick={toggleFullScreen}
               className="p-1 rounded-full hover:bg-gray-200 text-black"
-              title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+              title={isFullScreen ? t("Exit fullscreen") : t("Fullscreen")}
             >
               {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button> */}
             <button
               onClick={onClose}
               className="p-1 rounded-full hover:bg-gray-200 text-black"
-              title="Close"
+              title={t("Close")}
             >
               <X size={18} />
             </button>
@@ -354,7 +356,7 @@ const ImageThumbnail = memo<{ file: FileInfo }>(({ file }) => {
 
   if (isLoading) {
     return (
-      <div className="w-full h-20 flex items-center justify-center bg-gray-50">
+      <div className="w-full h-40 flex items-center justify-center bg-gray-50">
         <div className="animate-pulse bg-gray-200 w-8 h-8 rounded"></div>
       </div>
     );
@@ -362,14 +364,14 @@ const ImageThumbnail = memo<{ file: FileInfo }>(({ file }) => {
 
   if (hasError) {
     return (
-      <div className="w-full h-20 flex items-center justify-center bg-gray-50">
+      <div className="w-full h-40 flex items-center justify-center bg-gray-50">
         <ImageIcon className="w-8 h-8 text-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="w-full h-20 bg-gray-50 flex items-center justify-center overflow-hidden">
+    <div className="w-full h-40 bg-gray-50 flex items-center justify-center overflow-hidden">
       <img
         src={thumbnailUrl}
         alt={file.name}

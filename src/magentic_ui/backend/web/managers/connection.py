@@ -294,7 +294,9 @@ class WebSocketManager:
             self._team_managers.pop(run_id, None)  # Remove the team manager when done
 
     async def _save_message(
-        self, run_id: int, message: Union[AgentEvent | ChatMessage, LLMCallEventMessage]
+        self, 
+        run_id: int,
+        message: Union[AgentEvent | ChatMessage, LLMCallEventMessage],
     ) -> None:
         """
         Save a message to the database

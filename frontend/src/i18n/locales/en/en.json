@@ -164,6 +164,13 @@
   "Final Answer:": "Final Answer:",
   "All good": "All good",
   "File upload failed. Continuing with task...": "File upload failed. Continuing with task...",
+  "Function:": "Function:",
+  "Call Tool:": "Call Tool:",
+  "Result ID:": "Result ID:",
+  "Result:": "Result:",
+  "Regenerate a plan that improves on the current plan": "Regenerate a plan that improves on the current plan",
+  "Click to minimize": "Click to minimize",
+  "Click to expand": "Click to expand",
 
   "Segment Plan": "---------------------------------",
   "Please sign in to view your plans": "Please sign in to view your plans",
@@ -254,5 +261,18 @@
   "Session not found": "Session not found",
   "Error loading session": "Error loading session",
   "Error updating session name": "Error updating session name",
-  "Error creating default session": "Error creating default session"
+  "Error creating default session": "Error creating default session",
+
+  "Segment Common": "---------------------------------",
+  "Loading file content...": "Loading file content...",
+  "Processing large file...": "Processing large file...",
+  "No content available": "No content available",
+  "Unable to preview this file type.": "Unable to preview this file type.",
+  "Filename:": "Filename:",
+  "Download file": "Download file",
+  "Close": "Close",
+  "Exit fullscreen": "Exit fullscreen",
+  "Fullscreen": "Fullscreen",
+  "\n\n... Content truncated. File is too large to display completely. Please download the file to view all content ...": "\n\n... Content truncated. File is too large to display completely. Please download the file to view all content ...",
+  "Error processing file content. The file may be too large to display.": "Error processing file content. The file may be too large to display."
 }

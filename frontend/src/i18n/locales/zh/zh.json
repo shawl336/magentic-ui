@@ -164,6 +164,13 @@
   "Final Answer:": "最终答案：",
   "All good": "一切正常",
   "File upload failed. Continuing with task...": "文件上传失败。 继续执行任务...",
+  "Function:": "工具名称:",
+  "Call Tool:": "调用工具:",
+  "Result ID:": "结果ID:",
+  "Result:": "工具调用结果:",
+  "Regenerate a plan that improves on the current plan": "重新生成一个改进的计划",
+  "Click to minimize": "点击收起",
+  "Click to expand": "点击展开",
 
   "Segment Plan": "---------------------------------",
   "Please sign in to view your plans": "请登录以查看您的计划",
@@ -254,5 +261,18 @@
   "Session not found": "会话未找到",
   "Error loading session": "加载会话时出错",
   "Error updating session name": "更新会话名称时出错",
-  "Error creating default session": "创建默认会话时出错"
+  "Error creating default session": "创建默认会话时出错",
+
+  "Segment Common": "---------------------------------",
+  "Loading file content...": "载入文件内容...",
+  "Processing large file...": "处理大型文件...",
+  "No content available": "无有效内容",
+  "Unable to preview this file type.": "无法预览此文件类型",
+  "Filename:": "文件名:",
+  "Download file": "下载文件",
+  "Close": "关闭",
+  "Exit fullscreen": "退出全屏",
+  "Fullscreen": "全屏",
+  "\n\n... Content truncated. File is too large to display completely. Please download the file to view all content ...": "\n\n... 仅显示部分内容。文件太多无法展示全部内容，请下载后查看全部内容 ...",
+  "Error processing file content. The file may be too large to display.": "处理文件内容出错。文件可能太大，超过显示能力"
 }

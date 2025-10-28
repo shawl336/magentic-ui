@@ -1270,21 +1270,7 @@ class Orchestrator(BaseGroupChatManager):
             isinstance(current_step, SentinelPlanStep)
             and self._config.sentinel_plan.enable_sentinel_steps
         )
-
-        # Broadcast the next step
-        if not is_sentinel_step:
-            new_instruction = self.get_agent_instruction(
-                progress_ledger["instruction_or_question"]["answer"],
-                progress_ledger["instruction_or_question"]["agent_name"],
-            )
-            message_to_send = TextMessage(
-                content=new_instruction, source=self._name, metadata={"internal": "yes"}
-            )
-            self._state.message_history.append(message_to_send)  # My copy
-
-            await self._publish_group_chat_message(
-                message_to_send.content, cancellation_token, internal=False
-            )
+        
         # TODO: add sentinel step execution here if sentinel step
         json_step_execution = {
             "title": self._state.plan[self._state.current_step_idx].title,
@@ -1299,6 +1285,22 @@ class Orchestrator(BaseGroupChatManager):
             json.dumps(json_step_execution, ensure_ascii=False, indent=4),
             metadata={"internal": "no", "type": "step_execution"},
         )
+
+        # Broadcast the next step
+        if not is_sentinel_step:
+            new_instruction = self.get_agent_instruction(
+                progress_ledger["instruction_or_question"]["answer"],
+                progress_ledger["instruction_or_question"]["agent_name"],
+            )
+            message_to_send = TextMessage(
+                content=new_instruction, source=self._name, metadata={"internal": "yes"}
+            )
+            self._state.message_history.append(message_to_send)  # My copy
+
+            await self._publish_group_chat_message(
+                message_to_send.content, cancellation_token
+            )
+
 
         # Request that the step be completed
         if not is_sentinel_step:

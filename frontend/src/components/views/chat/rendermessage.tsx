@@ -252,7 +252,7 @@ const RenderMultiModal: React.FC<{
           <ClickableImage
             src={getImageSource(item)}
             alt={`Content ${index}`}
-            className="max-w-[400px]  max-h-[30vh] rounded-lg"
+            className="max-w-[800px] max-h-[60vh] rounded-lg"
           />
         )}
       </div>
@@ -261,25 +261,28 @@ const RenderMultiModal: React.FC<{
 ));
 
 const RenderToolCall: React.FC<{ content: FunctionCall[] }> = memo(
-  ({ content }) => (
+  ({ content }) => {
+    const { t } = useTranslation();
+    return (
     <div className="space-y-2 text-sm">
       {content.map((call) => (
         <div key={call.id} className="border border-secondary rounded p-2">
-          <div className="font-medium">Function: {call.name}</div>
+          {/* <div className="font-medium">{t("Function:")} {call.name}</div> */}
           <MarkdownRenderer
-            content={JSON.stringify(JSON.parse(call.arguments), null, 2)}
+            content={t("Call Tool:") + " " + call.name}
             indented={true}
           />
         </div>
       ))}
     </div>
-  )
-);
+    )
+});
+
 
 const RenderToolResult: React.FC<{ content: FunctionExecutionResult[] }> = memo(
   ({ content }) => {
     const [expandedResults, setExpandedResults] = useState<{ [key: string]: boolean }>({});
-
+    const { t } = useTranslation();
     const toggleExpand = (callId: string) => {
       setExpandedResults(prev => ({
         ...prev,
@@ -295,15 +298,15 @@ const RenderToolResult: React.FC<{ content: FunctionExecutionResult[] }> = memo(
 
           return (
             <div key={result.call_id} className="rounded p-2">
-              <div className="font-medium">Result ID: {result.call_id}</div>
+              {/* <div className="font-medium">{t("Result ID:")} {result.call_id}</div> */}
               <div 
                 className="cursor-pointer hover:bg-secondary/50 rounded p-1"
                 onClick={() => toggleExpand(result.call_id)}
               >
-                <MarkdownRenderer content={displayContent} indented={true} />
+                <MarkdownRenderer content={t("Result:") + " " + displayContent} indented={true} />
                 {result.content.length > 100 && (
                   <div className="text-xs text-gray-500 mt-1">
-                    {isExpanded ? "Click to minimize" : "Click to expand"}
+                    {isExpanded ? t("Click to minimize") : t("Click to expand")}
                   </div>
                 )}
               </div>
@@ -683,7 +686,7 @@ export const RenderMessage: React.FC<MessageProps> = memo(
     const isUser = messageUtils.isUser(message.source);
     const isUserProxy = message.source === "user_proxy";
     const isOrchestrator = ["Orchestrator"].includes(message.source);
-
+ 
     const parsedContent =
       isUser || isUserProxy
         ? parseUserContent(message)
@@ -701,7 +704,7 @@ export const RenderMessage: React.FC<MessageProps> = memo(
     // Hide regeneration request messages
     if (
       parsedContent.text ===
-      "Regenerate a plan that improves on the current plan"
+      t("Regenerate a plan that improves on the current plan")
     ) {
       return null;
     }

@@ -56,17 +56,23 @@ ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT = """
     ## 任务和计划概述
     我们正在努力完成以下用户请求：
 
+    <user_request>
     {task}
+    </user_request>
 
     ### 团队配置
     为了解决这个请求，我们组建了以下团队：
 
+    <team_config>
     {team}
+    </team_config>
 
     ### 计划内容
     以下是我们应尽力遵循的计划：
 
+    <current_plan>
     {plan}
+    </current_plan>
 """
 
 def get_orchestrator_system_message_intent_preprocess() -> str:
@@ -107,7 +113,9 @@ def get_orchestrator_system_message_intent_preprocess() -> str:
         - `additional_description`字段(关于该步骤的额外描述或者要求，比如输入输出的类型等。也可以为空)
     
     以下是所有的计划:
+    <preset_plans>
     {preset_plans}
+    </preset_plans>
 
     ## 输出格式
     基于如下JSON schema输出纯粹的JSON格式的回答. 输出JSON对象的格式一定要正确且能够正常解析.
@@ -178,7 +186,9 @@ def get_orchestrator_system_message_planning(
     
     ## 团队配置
     你的团队里有如下智能体(agent)，它们可以帮助你完成请求，每个智能体都有各自独有的专业知识：
+    <team_config>
     {team}
+    </team_config>
     
     - 记住, 不一定需要团队中的所有智能体(agent)参与每个任务！某些团队成员智能体(agent)的专业知识在某些任务中是不需要的。 
 
@@ -1069,11 +1079,15 @@ def get_orchestrator_progress_ledger_prompt(
     ## 计划执行进度
     回顾我们正在执行的用户请求:
 
+    <user_request>
     {task}
-
+    </user_request>
+    
     这是我们当前的执行计划：
 
+    <current_plan>
     {plan}
+    </current_plan>
 
     我们已经进行到了计划中的第{step_index}步，它的具体内容是： 
 
@@ -1136,11 +1150,15 @@ def get_orchestrator_progress_ledger_prompt_preset_plan():
     ## 计划执行进度
     回顾我们正在执行的用户请求:
 
+    <user_request>
     {task}
+    </user_request>
 
     这是我们当前的执行计划：
 
+    <current_plan>
     {plan}
+    </current_plan>
 
     我们已经进行到了计划中的第{step_index}步，它的具体内容是： 
 
