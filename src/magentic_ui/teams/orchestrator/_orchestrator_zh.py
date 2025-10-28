@@ -1286,6 +1286,7 @@ class Orchestrator(BaseGroupChatManager):
             metadata={"internal": "no", "type": "step_execution"},
         )
 
+        # Moved after the step_execution log by lx
         # Broadcast the next step
         if not is_sentinel_step:
             new_instruction = self.get_agent_instruction(
@@ -1293,12 +1294,13 @@ class Orchestrator(BaseGroupChatManager):
                 progress_ledger["instruction_or_question"]["agent_name"],
             )
             message_to_send = TextMessage(
-                content=new_instruction, source=self._name, metadata={"internal": "yes"}
+                # remove the unwanted '\n\n' output by the LLM
+                content=new_instruction.strip('\n').strip(), source=self._name
             )
             self._state.message_history.append(message_to_send)  # My copy
 
             await self._publish_group_chat_message(
-                message_to_send.content, cancellation_token
+                message_to_send.content, cancellation_token, internal=True
             )
 
 

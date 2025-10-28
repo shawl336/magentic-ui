@@ -208,8 +208,8 @@ class ElectricalRequirementValidator(BaseChatAgent):
         
         try:
             # DEBUG
-            yield await self.on_messages_stream_foo()
-            return
+            # yield await self.on_messages_stream_foo()
+            # return
             
             # get json response result
             self._data_response = await self._get_json_response(

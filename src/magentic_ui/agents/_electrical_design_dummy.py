@@ -677,13 +677,14 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
     async def _generate_circuit_file(
         self,
         circuit_requirments: Annotated[str, "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
+        circuit_filename: Annotated[str, "电路图的文件名，不包括后缀"],
         ) -> str:
         r"""
         根据circuit_requirments的描述，生成电路拓扑图和对应的电路描述。
         
         参数:
             circuit_requirments: 电路需求描述
-            
+            circuit_filename: 电路图的文件名，不包括后缀
         返回:
             json: {
                 "available_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
@@ -693,7 +694,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         try:
             cwd = os.getcwd()
-            shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), self._work_root / self._work_relative_dir / "电路拓扑图.jpg")
+            shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), self._work_root / self._work_relative_dir / (circuit_filename + ".jpg"))
         except Exception:
             return "生成电路拓扑图失败"  
         # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.jpg"], None)

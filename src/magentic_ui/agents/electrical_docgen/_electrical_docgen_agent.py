@@ -43,8 +43,6 @@ from magentic_ui.utils import thread_to_context
 from magentic_ui.teams.orchestrator._utils import extract_json_from_string
 from ._prompts import (
     VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT,
-    URBAN_RAIL_TECHNICAL_SPECIFICATION_MANDATORY_ITEMS,
-    URBAN_RAIL_TECHNICAL_SPECIFICATION_MISSING_ITEMS_TEMPLATE,
     project_design_paragraph_prompt_dict,
     CONCLUSION_AND_REPLY_PROMPT,
     urban_rail_traction_system_specification_dict,
@@ -129,25 +127,15 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         max_retries: int = 3,
         *,
         description: str = f"""
-        ## 核心定位
-        本agent是专业技术文档生成专家，由中车株洲所lamda实验室开发，严格遵循中车株洲所标准模板，自动化生成符合规范的设计方案说明书与技术规格说明书（.docx格式）。
-        本助手会首先判断用户提供信息是否完整，如果缺少关键信息，将主动提示并引导补充必要内容。
-        在生成过程中，如遇关键信息缺失，将主动提示并引导补充必要内容,即文档关键信息提示仅由调用本助手后提供，禁止杜撰关键信息；
+        
+        这是一个专业技术文档生成专家，由中车株洲所lamda实验室开发，严格遵循中车株洲所标准模板，自动化生成符合规范的设计方案说明书与技术规格说明书（.docx格式）。
+        它会首先判断用户提供信息是否完整，如果缺少关键信息，将主动提示并引导补充必要内容。
+        在生成过程中，如遇关键信息缺失，将主动提示并引导补充必要内容,即文档关键信息提示仅由调用本助手后提供，禁止杜撰关键信息！
         若信息完整，则直接输出高质量文档，并明确反馈“【xxx文档】已生成完成”。
-        ## 必要信息收集规范
-        {URBAN_RAIL_TECHNICAL_SPECIFICATION_MANDATORY_ITEMS}
-        ## 信息缺失处理协议
-        当检测到信息不完整时，必须严格使用以下模板向用户进行沟通，确保信息完整、逻辑清晰：
-        {URBAN_RAIL_TECHNICAL_SPECIFICATION_MISSING_ITEMS_TEMPLATE}
         """,
         system_message: (
             str | None
-        ) = """
-        你是一个专业的 docx 文档生成助手，专注于高效、准确地生成各类项目文档，
-        例如设计方案说明书, 技术规格说明书, 技术设计说明书等。在生成过程中，对于计划类文档中可能涉及的不明确或缺失的关键信息（如作者名称、文档类型、项目名称等），
-        我会主动与您进行交互确认，以确保生成内容符合实际需要。
-        整个过程无需依赖其他 agent 或联网搜索，由我独立完成。文档生成完成后，我将直接返回最终的 .docx 文件，代表任务结束。
-        """,
+        ) = "",
         model_client_stream: bool = False,
         model_context: ChatCompletionContext | None = None,
     ):
@@ -230,7 +218,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
             ),
             str(self._work_root / self._work_relative_dir),
         )
-        file_name = "广州地铁5号线牵引变流器项目技术规格说明书.docx"
+        file_name = "地铁牵引变流器项目技术规格说明书.docx"
         variable_dict = {
             "_coverpage_Project_Name": "双电机功率电路",
             "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。",
@@ -238,7 +226,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         }
         self.generator.gen_docx(variable_dict, file_name)
 
-        response_text = "您的【设计文档】说明书已经生成完成，总结内容如下：\n 聚焦广州地铁5号线牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
+        response_text = "您的【设计文档】说明书已经生成完成，总结内容如下：\n 聚焦牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
         return Response(
             chat_message=TextMessage(
                 content=response_text,
@@ -267,8 +255,8 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
         
         # DEBUG
-        yield await self.on_messages_stream_foo()
-        return
+        # yield await self.on_messages_stream_foo()
+        # return
         
         if self._state == "planning":
             # first step: jugement is contain all requirement message
