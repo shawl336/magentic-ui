@@ -479,13 +479,13 @@ const RenderFinalAnswer: React.FC<RenderFinalAnswerProps> = memo(
     return (
       <div className="border-2 border-secondary rounded-lg p-4">
         <div className="flex justify-between items-center">
-          <div className="font-semibold text-primary">{t("Final Answer")}</div>
-          <LearnPlanButton
+          <div className="font-semibold text-primary">{t("Final Answer:")}</div>
+          {/* <LearnPlanButton
             sessionId={sessionId}
             messageId={messageIdx}
             onSuccess={(planId: string) => {
             }}
-          />
+          /> */}
         </div>
         <div className="break-words">
           <MarkdownRenderer content={content} />

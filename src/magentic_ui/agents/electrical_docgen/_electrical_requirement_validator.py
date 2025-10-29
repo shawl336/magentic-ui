@@ -91,11 +91,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
         """,
         system_message: (
             str | None
-        ) = """
-        你是电气设备需求文档智能校验助手，专门负责轨道交通电气系统需求文档的信息提取与完整性验证。
-        专注于轨道交通电气设备需求文档的完整性判断与信息提取，服务于项目需求评审和技术规格验证。
-        请严格按照电气参数识别规则处理输入文档，输出标准化的JSON验证结果。
-        """,
+        ) = "",
         model_client_stream: bool = False,
     ):
         """
@@ -113,11 +109,11 @@ class ElectricalRequirementValidator(BaseChatAgent):
         self.model_client = model_client
         self.model_client_stream = model_client_stream
         self.message_history: List[BaseChatMessage | BaseAgentEvent] = []
-        self._system_messages: List[SystemMessage] = []
-        if system_message is None:
-            self._system_messages = []
-        else:
-            self._system_messages = [SystemMessage(content=system_message)]
+        # self._system_messages: List[SystemMessage] = []
+        # if system_message is None:
+        #     self._system_messages = []
+        # else:
+        #     self._system_messages = [SystemMessage(content=system_message)]
 
         self._model_context = UnboundedChatCompletionContext()
 
@@ -143,7 +139,6 @@ class ElectricalRequirementValidator(BaseChatAgent):
         
          # 保存文件
         filtered_data = { 
-            "文档类型": "技术规格说明书", 
             "项目名称": "广州地铁5号线牵引变流器项目", 
             "直流高压等级数值": "DC 1500V", 
             "列车最大运行速度": "160km/h", 
@@ -188,13 +183,12 @@ class ElectricalRequirementValidator(BaseChatAgent):
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
         # manage context messages
         context_messages = self._thread_to_context(
-            system_prompt=ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT
+            system_prompt=ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT + "\n /no_think"
         )
 
         validation_list = [
             "complete",
             "message",
-            "文档类型",
             "项目名称",
             "直流高压等级数值",
             "列车最大运行速度",
@@ -208,8 +202,8 @@ class ElectricalRequirementValidator(BaseChatAgent):
         
         try:
             # DEBUG
-            yield await self.on_messages_stream_foo()
-            return
+            # yield await self.on_messages_stream_foo()
+            # return
             
             # get json response result
             self._data_response = await self._get_json_response(

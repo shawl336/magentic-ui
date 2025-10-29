@@ -734,7 +734,7 @@ const RunView: React.FC<RunViewProps> = ({
     );
 
     return (
-      <div className="absolute right-6 z-50 flex flex-col gap-3" style={{ bottom: '6rem' }}>
+      <div className="absolute right-6 z-50 flex flex-col gap-3 opacity-0 hover:opacity-100 transition-opacity duration-300" style={{ bottom: '6rem' }}>
         <ScrollButton
           icon={<ChevronUp className="h-5 w-5" />}
           title="回到顶部"

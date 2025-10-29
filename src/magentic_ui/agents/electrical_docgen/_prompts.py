@@ -1,6 +1,5 @@
 URBAN_RAIL_TECHNICAL_SPECIFICATION_MANDATORY_ITEMS = """
 
-- 文档类型
 - 项目名称
 - 直流高压等级数值  
 - 列车最大运行速度
@@ -19,7 +18,6 @@ URBAN_RAIL_TECHNICAL_SPECIFICATION_MISSING_ITEMS_TEMPLATE = """
 
 **请补充**：
 
-- 文档类型：方案设计说明书｜技术规格说明书
 - 项目名称：如“XXXX地铁X号线XX项目”
 - 直流高压等级数值： DC xxV  
 - 列车最大运行速度： xxkm/h
@@ -32,7 +30,6 @@ URBAN_RAIL_TECHNICAL_SPECIFICATION_MISSING_ITEMS_TEMPLATE = """
 
 **示例填写**：
 
-- 文档类型: 方案设计说明书 | 技术规格说明书
 - 项目名称: 广州地铁5号线牵引变流器项目
 - 直流高压等级数值： DC 1500V  
 - 列车最大运行速度： 160km/h
@@ -92,7 +89,7 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 
 - document_type: 
   - 用户期望生成的技术文档类型。技术文档类型有且仅有:"技术规格说明书"，"方案设计说明书"。
-  - 如果用户没有提及，需要用户明确补充。
+  - 如果用户没有提及，默认为技术规格说明书。
   
 - complete:
   - 是否已提取到所有的必要技术参数信？如果是取'true'，否则取'false'。
@@ -119,7 +116,7 @@ VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT = f"""
 {{
   "complete": true | false,
   "message": "信息完善" | 根据[缺失信息回复模版]生成的缺失信息提示,
-  "document_type": "方案设计说明书" | "技术规格说明书" | "待确定",
+  "document_type": "方案设计说明书" | "技术规格说明书"
   "project_name": "根据用户提供的信息填写"或者空字符串""
 }}
 
@@ -240,17 +237,17 @@ ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT = f"""
 - 回复只能提示用户补充缺失的项目，不要重复要已经有的信息。
 - 严格按照缺失信息模板格式生成提示信息。
 
-### 缺失信息回复模版
+<missing_items_template>
 
 {URBAN_RAIL_TECHNICAL_SPECIFICATION_MISSING_ITEMS_TEMPLATE}
-
+</missing_items_template>
 
 ## 输出格式规范
 
 **严格遵循以下JSON schema格式，不要输出JSON以外的任何内容**
 {{
   "complete": true | false,
-  "message": "信息完善" | 根据[缺失信息回复模版]生成的缺失信息提示,
+  "message": "信息完善" | 严格遵循<missing_items_template>模板生成缺失信息提示,
   "文档类型": "方案设计说明书" | "技术规格说明书" | "待确定",
   "项目名称": "xxx",
   "直流高压等级数值": "xxx" , 

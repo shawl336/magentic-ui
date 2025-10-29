@@ -32,6 +32,26 @@ PRESET_PLANS: str = """
         }
     ]
   },
+  "文档生成工作计划": {
+    "description": "文档生成工作计划对应的是变压器，变流器等电气设备的相关文档生成。包含了电气设计需求提取与分析，文档生成等步骤。",
+    "steps": [
+        {
+          "id": "1"
+          "title": "电气设计需求提取与分析",
+          "details": "提取和整理用户电气设计的需求为后续的电气设计步骤提供必要的上下文信息。",
+          "agent_name": "electrical_requirement_validator",
+          "additional_description": "这个一步的输入是用户的原始请求。不要包含任何其他信息，也不要用户补充任何信息，请直接输入用户的原始请求！"
+        },
+        {
+          "id": "2"
+          "title": "生成技术规格说明书",
+          "details": "基于第1步整理好的需求文档，生成技术规格书并归档。",
+          "agent_name": "documentation_analysis_and_generation_agent",
+          "additional_description": "输入指令应该包含第1步整理好的需求文档。输出技术规格说明书文档，不直接输出技术规格说明书内容，而是以文档的形式保存在一个路径。"
+        },
+
+    ]
+  }
 }
 """
 

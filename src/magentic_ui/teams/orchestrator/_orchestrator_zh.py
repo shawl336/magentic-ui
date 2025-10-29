@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from os import name
 from typing import Any, Dict, List, Optional, Mapping, Callable, Sequence
 import io
 import PIL.Image
@@ -56,6 +57,7 @@ from ._prompts import (
     get_orchestrator_progress_ledger_prompt_preset_plan,
     get_orchestrator_system_message_intent_preprocess,
     ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION,
+    ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION_PRESET_PLAN,
     ORCHESTRATOR_FINAL_ANSWER_PROMPT,
     ORCHESTRATOR_TASK_LEDGER_FULL_FORMAT,
     INSTRUCTION_AGENT_FORMAT,
@@ -1482,13 +1484,13 @@ class Orchestrator(BaseGroupChatManager):
             context_messages.append(
                 SystemMessage(content=self._get_system_message_planning())
             )
+        elif self._state.plan and self._state.plan.is_preset :
+            context_messages.append(
+                SystemMessage(content=ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION_PRESET_PLAN.format(date_today=date_today))
+            )
         else:
             context_messages.append(
-                SystemMessage(
-                    content=ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION.format(
-                        date_today=date_today
-                    )
-                )
+                SystemMessage(content=ORCHESTRATOR_SYSTEM_MESSAGE_EXECUTION.format(date_today=date_today))
             )
         if self._model_client.model_info["vision"]:
             context_messages.extend(

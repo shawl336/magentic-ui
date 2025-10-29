@@ -49,7 +49,7 @@ const DocumentIframe: React.FC<DocumentIframeProps> = ({
     // 通过前端proxy提供文档 - 使用宿主机IP，这样OnlyOffice容器能访问
     // 添加时间戳参数来破坏缓存，确保获取最新版本
     const timestamp = Date.now();
-    const documentUrl = `http://${IP_ADDRESS}:8000/api/document/${apiPath}?t=${timestamp}`;
+    const documentUrl = `http://${IP_ADDRESS}:8081/api/document/${apiPath}?t=${timestamp}`;
     const documentKey = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // 动态加载OnlyOffice API

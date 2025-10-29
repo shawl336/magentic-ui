@@ -1188,7 +1188,8 @@ class Orchestrator(BaseGroupChatManager):
             final_answer = response.content
 
         message = TextMessage(
-            content=f"Final Answer: {final_answer}", source=self._name
+            # corresponding to the "Final Answer:" in the frontend
+            content=f"总结: {final_answer}", source=self._name
         )
 
         self._state.message_history.append(message)  # My copy

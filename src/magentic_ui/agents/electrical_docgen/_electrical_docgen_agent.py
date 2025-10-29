@@ -133,9 +133,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         在生成过程中，如遇关键信息缺失，将主动提示并引导补充必要内容,即文档关键信息提示仅由调用本助手后提供，禁止杜撰关键信息！
         若信息完整，则直接输出高质量文档，并明确反馈“【xxx文档】已生成完成”。
         """,
-        system_message: (
-            str | None
-        ) = "",
+        system_message: (str | None) = "",
         model_client_stream: bool = False,
         model_context: ChatCompletionContext | None = None,
     ):
@@ -262,7 +260,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
             # first step: jugement is contain all requirement message
             # get context prompt
             context_messages = self._thread_to_context(
-                system_prompt=VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT
+                system_prompt=VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT + "\n /no_think"
             )
             temp_generate_key_list = [
                 "complete",

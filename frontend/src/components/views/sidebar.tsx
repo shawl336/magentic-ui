@@ -180,10 +180,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         key="learn-plan"
                         onClick={(e) => e.domEvent.stopPropagation()}
                       >
-                        <LearnPlanButton
+                        {/* <LearnPlanButton
                           sessionId={Number(s.id)}
                           messageId={-1}
-                        />
+                        /> */}
                       </Menu.Item>
                     </Menu>
                   }

@@ -632,7 +632,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         context_messages: List[LLMMessage] = []
         context_messages.append(
             SystemMessage(
-                content=system_prompt
+                content=system_prompt + "\n /no_think"
                 )
         )
         if self._model_client.model_info["vision"]:
@@ -694,7 +694,18 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         try:
             cwd = os.getcwd()
-            shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), self._work_root / self._work_relative_dir / (circuit_filename + ".jpg"))
+            jpg_path = self._work_root / self._work_relative_dir / (circuit_filename + ".jpg")
+            if jpg_path.exists():
+                jpg_path.touch()
+            else:
+                shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), jpg_path)
+            
+            dwg_path = self._work_root / self._work_relative_dir / (circuit_filename + ".dwg")
+            if dwg_path.exists():
+                dwg_path.touch()
+            else:
+                shutil.copy(os.path.join(cwd, "misc/circuit_foo.dwg"), dwg_path)
+            
         except Exception:
             return "生成电路拓扑图失败"  
         # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.jpg"], None)
