@@ -101,7 +101,9 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     const [isRelevantPlansVisible, setIsRelevantPlansVisible] =
       React.useState(false);
     const [isPlanModalVisible, setIsPlanModalVisible] = React.useState(false);
-    const textAreaDefaultHeight = "64px";
+    // 输入框高度设置：最低4行(约80px)，最高10行(约200px)
+    const textAreaDefaultHeight = "100px"; // 3行
+    const textAreaMaxHeight = "260px"; // 8行
     const isInputDisabled =
       disabled ||
       runStatus === "active" ||
@@ -113,20 +115,26 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     // Handle textarea auto-resize and scrollbar visibility
     React.useEffect(() => {
       if (textAreaRef.current) {
+        // 先重置高度以获取准确的scrollHeight
         textAreaRef.current.style.height = textAreaDefaultHeight;
         const scrollHeight = textAreaRef.current.scrollHeight;
-        textAreaRef.current.style.height = `${scrollHeight}px`;
+        const maxHeightPx = parseInt(textAreaMaxHeight);
         
-        // Determine if we need to show scrollbar (5 lines = approximately 120px)
-        const fiveLinesHeight = 120;
-        setShowScrollbar(scrollHeight > fiveLinesHeight);
+        // 限制高度不超过最大高度（10行）
+        const finalHeight = Math.min(scrollHeight, maxHeightPx);
+        textAreaRef.current.style.height = `${finalHeight}px`;
+        
+        // 超过10行(约200px)后显示滚动条
+        setShowScrollbar(scrollHeight > maxHeightPx);
       }
       if (textAreaDivRef.current) {
         textAreaDivRef.current.style.height = textAreaDefaultHeight;
         const scrollHeight = textAreaDivRef.current.scrollHeight;
-        textAreaDivRef.current.style.height = `${scrollHeight}px`;
+        const maxHeightPx = parseInt(textAreaMaxHeight);
+        const finalHeight = Math.min(scrollHeight, maxHeightPx);
+        textAreaDivRef.current.style.height = `${finalHeight}px`;
       }
-    }, [text, inputRequest]);
+    }, [text, inputRequest, textAreaDefaultHeight, textAreaMaxHeight]);
 
     React.useEffect(() => {
       if (!error) {
@@ -772,9 +780,9 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
                       } ${isInputDisabled ? "cursor-not-allowed" : ""
                       } focus:outline-none ${showScrollbar ? "scroll" : ""}`}
                     style={{
-                      maxHeight: "120px",
+                      maxHeight: textAreaMaxHeight,
                       overflowY: showScrollbar ? "auto" : "hidden",
-                      minHeight: "50px",
+                      minHeight: textAreaDefaultHeight,
                     }}
                     placeholder={
                       runStatus === "awaiting_input"

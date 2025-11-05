@@ -170,15 +170,40 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       ? content.slice(0, maxLength) + "..."
       : content;
 
-  // 检查是否是纯文本（不包含 Markdown 语法）
-  // 如果是纯文本且包含大量中文，直接渲染为普通段落
+  // 检查是否包含 Markdown 语法特征
+  // 如果包含任何 Markdown 语法，都应该走 Markdown 渲染
+  const hasMarkdownSyntax = 
+    // 标题（支持有空格和无空格的形式，如 # 标题 或 ##标题，支持多行）
+    /^#{1,6}\s*[\u4e00-\u9fa5\w]/m.test(content) ||
+    // 列表（无序列表和有序列表，支持多行）
+    /^\s*[-*+]\s/m.test(content) ||
+    /^\s*\d+\.\s/m.test(content) ||
+    // 引用（支持多行）
+    /^\s*>\s/m.test(content) ||
+    // 代码块（三个反引号）
+    /```/.test(content) ||
+    // 行内代码（单个反引号，但排除单个反引号作为标点的情况）
+    /`[^`\n]+`/.test(content) ||
+    // 加粗（**文本**）
+    /\*\*[^*\n]+\*\*/.test(content) ||
+    // 斜体（*文本*，排除列表标记和加粗的情况）
+    /[^*\n]\*[^*\n]+\*[^*\n]/.test(content) ||
+    // 删除线（~~文本~~）
+    /~~[^~\n]+~~/.test(content) ||
+    // 链接 [文本](url)
+    /\[[^\]]+\]\([^)]+\)/.test(content) ||
+    // 图片 ![alt](url)
+    /!\[[^\]]*\]\([^)]+\)/.test(content) ||
+    // 表格（包含 | 符号）
+    /\|[^\n]+\|/.test(content) ||
+    // 水平线（--- 或 ***）
+    /^[-*]{3,}$/m.test(content);
+
+  // 检查是否是纯文本（不包含任何 Markdown 语法）
+  // 只有当不包含任何 Markdown 语法时，才当作纯文本处理
   const isPlainText = !fileExtension && 
                       /[\u4e00-\u9fa5]/.test(content) && 
-                      !content.match(/^#{1,6}\s/) && // 不是标题
-                      !content.match(/^\s*[-*+]\s/) && // 不是列表
-                      !content.match(/^\s*>\s/) && // 不是引用
-                      !content.match(/```/) && // 不包含代码块标记
-                      !content.match(/^```/m); // 不是代码块开头
+                      !hasMarkdownSyntax;
 
   // 如果是纯文本，直接渲染为段落，不经过 Markdown 解析
   if (isPlainText) {
