@@ -5,6 +5,7 @@ import "antd/dist/reset.css";
 import { ConfigProvider, theme } from "antd";
 import { SessionManager } from "./views/manager";
 import { useTranslation } from 'react-i18next'
+import { navigate } from "gatsby";
 
 const classNames = (...classes: (string | undefined | boolean)[]) => {
   return classes.filter(Boolean).join(" ");
@@ -31,23 +32,62 @@ const MagenticUILayout = ({
   onTabChange,
 }: Props) => {
   const { t, i18n } = useTranslation();
-  const { darkMode, user, setUser } = React.useContext(appContext);
+  const { darkMode, user, setUser, isLoggedIn } = React.useContext(appContext);
   const { sidebar } = useConfigStore();
   const { isExpanded } = sidebar;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  // Mimic sign-in: if no user or user.email, set default user and localStorage
+  // Check authentication on mount and when auth state changes
   React.useEffect(() => {
     i18n.changeLanguage('zh');
 
-    if (!user?.email) {
-      const defaultEmail = "default";
-      setUser({ ...user, email: defaultEmail, name: defaultEmail });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("user_email", defaultEmail);
+    // Only check and redirect on client side
+    if (typeof window === "undefined") return;
+
+    const currentPath = window.location.pathname;
+    const isLoginPage = currentPath === '/login' || currentPath.startsWith('/login');
+    
+    // Check authentication state from localStorage first (most reliable)
+    const storedUser = localStorage.getItem("magentic_ui_user");
+    const storedToken = localStorage.getItem("magentic_ui_token");
+    
+    // Parse and validate user data
+    let hasValidAuth = false;
+    if (storedUser && storedToken) {
+      try {
+        const userObj = JSON.parse(storedUser);
+        // Check if it's a valid user object (not empty, has id or employee_id)
+        if (userObj && (userObj.id || userObj.employee_id || userObj.username)) {
+          hasValidAuth = true;
+        }
+      } catch (e) {
+        // Invalid JSON - clear corrupted data
+        console.error('Invalid user data in localStorage:', e);
+        localStorage.removeItem("magentic_ui_user");
+        localStorage.removeItem("magentic_ui_token");
       }
     }
-  }, [user, setUser]);
+    
+    // If we're on login page
+    if (isLoginPage) {
+      // If already authenticated, redirect to home
+      if (hasValidAuth && isLoggedIn) {
+        navigate('/');
+      }
+      return;
+    }
+    
+    // Not on login page - must be authenticated
+    if (!hasValidAuth || !isLoggedIn) {
+      console.log('Not authenticated, redirecting to login...', { 
+        hasValidAuth, 
+        storedToken: !!storedToken, 
+        isLoggedIn,
+        currentPath
+      });
+      navigate('/login');
+    }
+  }, [isLoggedIn, link]);
 
   // Close mobile menu on route change
   React.useEffect(() => {

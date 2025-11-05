@@ -1,25 +1,25 @@
 .dark {
-  --color-bg-primary: #1a1a1a;
-  --color-bg-secondary: #a88da841;
-  --color-bg-light: #3a3a3a;
-  --color-bg-tertiary: #444444;
+  --color-bg-primary: #242424;
+  --color-bg-secondary: #2c2c2c;
+  --color-bg-light: #383838;
+  --color-bg-tertiary: #4b4b4b;
   --color-bg-opposite: #edf2f7;
   --color-bg-white: #ffffff;
-  --color-bg-dark: #1a1a1a;
+  --color-bg-dark: #181818;
   --color-bg-accent: #777777;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #e5e5e58f;
-  --color-text-accent: #e5e5e5;
-  --color-border-primary: #ffffff30;
-  --color-border-secondary: #e5e5e530;
+  --color-text-primary: rgba(255, 255, 255, 0.9);
+  --color-text-secondary: rgba(255, 255, 255, 0.55);
+  --color-text-accent: rgba(255, 255, 255, 0.9);
+  --color-border-primary: #383838;
+  --color-border-secondary: #4b4b4b;
   --color-border-accent: #1a1a1a;
   --color-warning-primary: #F6A147;
   --color-text-message: #000000;
 
-  --color-magenta-400: #F2E5F2;
-  --color-magenta-700: #C7001970;
-  --color-magenta-800: #C70019;
-  --color-magenta-900: #C70000;
+  --color-magenta-400: #c7001920;
+  --color-magenta-700: #9e0014;
+  --color-magenta-800: #c70019;
+  --color-magenta-900: #ff4d5f;
 
   --color-blue-400: #EDF4FB;
   --color-blue-700: #A0D6FF;
@@ -32,26 +32,26 @@
 
 .light {
   --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f1e9f1;
+  --color-bg-secondary: #f3f3f3;
   --color-bg-light: #f9fafb;
-  --color-bg-tertiary: #f3f6f9;
+  --color-bg-tertiary: #eee;
   --color-bg-opposite: #2a2a2a;
   --color-bg-white: #ffffff;
   --color-bg-dark: #1a1a1a;
   --color-bg-accent: #444444;
-  --color-text-primary: #000000;
-  --color-text-secondary: #4a5568;
-  --color-text-accent: #444444;
-  --color-border-primary: #e2e8f0;
-  --color-border-secondary: #edf2f7;
+  --color-text-primary: rgba(0, 0, 0, 0.9);
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+  --color-text-accent: rgba(0, 0, 0, 0.9);
+  --color-border-primary: #e7e7e7;
+  --color-border-secondary: #dcdcdc;
   --color-border-accent: #444444;
   --color-warning-primary: #F6A147;
   --color-text-message: #000000;
 
-  --color-magenta-400: #F2E5F2;
-  --color-magenta-700: #C7001970;
-  --color-magenta-800: #C70019;
-  --color-magenta-900: #C70000;
+  --color-magenta-400: #fdecee;
+  --color-magenta-700: #ff4d5f;
+  --color-magenta-800: #c70019;
+  --color-magenta-900: #b30017;
 
   --color-blue-400: #EDF4FB;
   --color-blue-700: #A0D6FF;
