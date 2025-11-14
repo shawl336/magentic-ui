@@ -102,7 +102,7 @@ class ElectrialcalDocGenConfig(BaseModel):
     model_client_stream: bool = False
 
 
-class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]):
+class ElectrialcalTechnicalSpecificationGenerator(BaseChatAgent, Component[ElectrialcalDocGenConfig]):
     """Electrical Documentation Generation Agent
 
     Core capabilities:
@@ -127,8 +127,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         max_retries: int = 3,
         *,
         description: str = f"""
-        
-        这是一个专业技术文档生成专家，由中车株洲所lamda实验室开发，严格遵循中车株洲所标准模板，自动化生成符合规范的设计方案说明书与技术规格说明书（.docx格式）。
+        这是一个专业技术文档生成专家，由中车株洲所lamda实验室开发，严格遵循中车株洲所标准模板，专注于生成符合规范的技术规格说明书（.docx格式）。
         它会首先判断用户提供信息是否完整，如果缺少关键信息，将主动提示并引导补充必要内容。
         在生成过程中，如遇关键信息缺失，将主动提示并引导补充必要内容,即文档关键信息提示仅由调用本助手后提供，禁止杜撰关键信息！
         若信息完整，则直接输出高质量文档，并明确反馈“【xxx文档】已生成完成”。
@@ -212,11 +211,11 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         self.generator = GenDocxUseTemplate(
             os.path.join(
                 self.current_dir_os_path,
-                "docx_template/1_城轨_系统技术规格说明书.docx",
+                "docx_template/技术规格书-部件-牵引变流器-上海机场联络线-20230310.docx",
             ),
             str(self._work_root / self._work_relative_dir),
         )
-        file_name = "地铁牵引变流器项目技术规格说明书.docx"
+        file_name = "机场联络线_牵引变流器方案技术规格说明书.docx"
         variable_dict = {
             "_coverpage_Project_Name": "双电机功率电路",
             "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。",
@@ -224,7 +223,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
         }
         self.generator.gen_docx(variable_dict, file_name)
 
-        response_text = "您的【设计文档】说明书已经生成完成，总结内容如下：\n 聚焦牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
+        response_text = "您的【技术规格说明书】已经生成完成，总结内容如下：\n 聚焦牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
         return Response(
             chat_message=TextMessage(
                 content=response_text,
@@ -280,7 +279,8 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                 yield Response(
                     chat_message=TextMessage(
                         content=self.data_response_planning["message"],
-                        source=self.name,
+                        source=self.name, 
+                        metadata={"to_user": "yes"}
                     ),
                     inner_messages=inner_messages,
                 )
@@ -317,7 +317,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                     str(self._work_root / self._work_relative_dir),
                 )
                 # TODO  optimize filename
-                output_filename = f"{self.data_response_planning.get('project_name', "未命名")}{self.data_response_planning.get('document_type', None)}.docx"
+                output_filename = f"{self.data_response_planning.get('project_name', '未命名')}{self.data_response_planning.get('document_type', None)}.docx"
                 self.generator.gen_docx(self._variable_dict, output_filename)
 
             elif self.data_response_planning["document_type"] == "技术规格说明书":
@@ -335,7 +335,7 @@ class ElectrialcalDocGenAgent(BaseChatAgent, Component[ElectrialcalDocGenConfig]
                     ),
                     str(self._work_root / self._work_relative_dir),
                 )
-                output_filename = f"{self.data_response_planning.get('project_name', "未命名")}{self.data_response_planning.get('document_type', None)}.docx"
+                output_filename = f"{self.data_response_planning.get('project_name', '未命名')}{self.data_response_planning.get('document_type', None)}.docx"
                 self.generator.gen_docx(self._variable_dict, output_filename)
             else:
                 # invalid document_type
@@ -658,6 +658,7 @@ async def main():
         model="qwq-32b",
         base_url="http://36.103.239.236:8000/v1/",
         api_key="placeholder",
+        timeout=120.0, 
         model_info={
             "vision": False,
             "function_calling": True,
@@ -668,7 +669,7 @@ async def main():
     )
     current_file_path = __file__
     current_dir_os_path = os.path.dirname(os.path.abspath(current_file_path))
-    electrial_gendoc = ElectrialcalDocGenAgent(
+    electrial_gendoc = ElectrialcalTechnicalSpecificationGenerator(
         "electrial_gendoc",
         model_client,
         work_root=Path(current_dir_os_path),

@@ -1,7 +1,5 @@
 from autogen_agentchat.agents import BaseChatAgent
 import os
-import aiofiles
-import asyncio
 
 from typing import (
     Any,
@@ -16,7 +14,7 @@ from typing import (
 
 from autogen_agentchat.base import Response
 from pydantic import BaseModel
-from autogen_core import CancellationToken
+from autogen_core import CancellationToken, Component, ComponentModel
 from autogen_agentchat.messages import (
     ModelClientStreamingChunkEvent,
 )
@@ -28,29 +26,83 @@ from autogen_core.models import (
     ChatCompletionClient,
     CreateResult,
     LLMMessage,
+    AssistantMessage,
     SystemMessage,
     UserMessage,
 )
 from autogen_agentchat.utils import remove_images
 from autogen_agentchat.agents import BaseChatAgent
+
 from autogen_agentchat.messages import (
     BaseAgentEvent,
     BaseChatMessage,
     TextMessage,
-    HandoffMessage,
 )
 
 from magentic_ui.utils import thread_to_context
 from magentic_ui.teams.orchestrator._utils import extract_json_from_string
 from ._prompts import (
-    ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT,
+    VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT,
+    project_design_paragraph_prompt_dict,
+    CONCLUSION_AND_REPLY_PROMPT,
+    urban_rail_traction_system_specification_dict,
 )
+
+import asyncio
+from loguru import logger
+from docxtpl import DocxTemplate
 from pathlib import Path
 import json
-from loguru import logger
 
 
-class ElectricalRequirementValidator(BaseChatAgent):
+class GenDocxUseTemplate(object):
+    """use template to generate doxc"""
+
+    def __init__(self, template_file_path: str, output_file_path: str):
+
+        self.template_file_path = template_file_path
+        self.template_docx = DocxTemplate(Path(self.template_file_path))  # TODO
+        self.output_file_path = Path(output_file_path)
+
+    def gen_docx(self, variable_dict: Dict[str, Any], otput_file_name: str):
+        """Generate Word document from template
+
+        Args:
+            variable_dict: Dictionary of template variables
+            output_file_name: Output filename
+        """
+
+        self.template_docx.render(variable_dict)
+        self.template_docx.save(self.output_file_path / otput_file_name)
+
+
+class ElectrialcalDocGenConfig(BaseModel):
+    """
+    The declarative configuration for the ElectrialcalDocGen agent.
+
+    Attributes:
+        name: Agent name
+        model_client: Model client component
+        tools: List of tools, optional
+        model_context: Model context component, optional
+        description: Agent description
+        system_message: System message, optional
+        model_client_stream: Whether to use streaming model client
+        structured_message_factory: Structured message factory component, optional
+    """
+
+    # pydantic 提供了具体的数据验证和序列化功能
+
+    name: str
+    model_client: ComponentModel
+    tools: List[ComponentModel] | None = None
+    model_context: ComponentModel | None = None
+    description: str
+    system_message: str | None = None
+    model_client_stream: bool = False
+
+
+class ElectrialcalProjectDesignGenerator(BaseChatAgent, Component[ElectrialcalDocGenConfig]):
     """Electrical Documentation Generation Agent
 
     Core capabilities:
@@ -58,10 +110,11 @@ class ElectricalRequirementValidator(BaseChatAgent):
     - Generate documentation for electrical systems
     - Accept plain-language electrical design requirements
     usage example:
-        electrialcal_docgen_agent = ElectricalRequirementValidator()
+        electrialcal_docgen_agent = ElectrialcalDocGenAgent()
     """
 
-    component_provider_override = "magentic_ui.users._electricalrequirementvalidator"
+    component_config_schema = ElectrialcalDocGenConfig
+    component_provider_override = "magentic_ui.users._electriacal_docgen_agent"
 
     def __init__(
         self,
@@ -71,34 +124,33 @@ class ElectricalRequirementValidator(BaseChatAgent):
         work_relative_dir: Path,
         bind_root: Path,
         bind_relative_dir: Path,
-        max_retries: int = 2,
+        max_retries: int = 3,
         *,
-        description: str = """
-        ## 功能概述
-        这是一个电气设计需求分析专家，具备丰富的电气设计经验，熟悉完成一个电气必须具备哪些需求参数。
-        它接受用户的电气需求，检查必要需求的完整性并引导用户补充缺失的信息，自动识别和提取轨道交通电气系统设计需求中的关键参数信息。
-        或者向它提出一个宽泛的电气设计请求，比如: "我要设计一个牵引变流器"，它将引导用户一步步补充必要的需求参数。
-
-        ## 核心能力
-        - **完整性校验**: 检查是否提供了全部的必要需求信息，若未提供则生成具体的补充要求
-        - **引导需求信息补全**: 根据用户的请求类型，引导并提示用户提供必要的参数信息
-        - **信息提取**: 从技术文档中自动识别关键电气参数
-        - **格式标准化**: 输出统一的JSON格式结果
-
-        ## 适用场景
-        - 项目需求文档完整性判断
-        - 项目需求文档信息提取
+        description: str = f"""
+        这是一个专业技术文档生成专家，由中车株洲所lamda实验室开发，严格遵循中车株洲所标准模板，专注于生成符合规范的设计方案说明书（.docx格式）。
+        它会首先判断用户提供信息是否完整，如果缺少关键信息，将主动提示并引导补充必要内容。
+        在生成过程中，如遇关键信息缺失，将主动提示并引导补充必要内容,即文档关键信息提示仅由调用本助手后提供，禁止杜撰关键信息！
+        若信息完整，则直接输出高质量文档，并明确反馈“【xxx文档】已生成完成”。
         """,
-        system_message: (
-            str | None
-        ) = "",
+        system_message: (str | None) = "",
         model_client_stream: bool = False,
+        model_context: ChatCompletionContext | None = None,
     ):
         """
-        Initialize the electrialcalDocGen agent.
+        Initialize Electrical Documentation Generation Agent
 
         Args:
-            name (str): The name of the agent.
+            name: Agent name
+            model_client: Chat completion client
+            work_root: Working root directory
+            work_relative_dir: Working relative directory
+            bind_root: Bind root directory
+            bind_relative_dir: Bind relative directory
+            max_retries: Maximum retry attempts
+            description: Agent description
+            system_message: System message
+            model_client_stream: Whether to use streaming model client
+            model_context: Model context, optional
         """
         super().__init__(name=name, description=description)
         self._work_root = work_root
@@ -108,17 +160,34 @@ class ElectricalRequirementValidator(BaseChatAgent):
         self.max_retries = max_retries
         self.model_client = model_client
         self.model_client_stream = model_client_stream
+        # Initialize system messages
+        self._system_messages: List[SystemMessage] = []
+        if system_message is None:
+            self._system_messages = []
+        else:
+            self._system_messages = [SystemMessage(content=system_message)]
+        # Initialize message history
         self.message_history: List[BaseChatMessage | BaseAgentEvent] = []
-        # self._system_messages: List[SystemMessage] = []
-        # if system_message is None:
-        #     self._system_messages = []
-        # else:
-        #     self._system_messages = [SystemMessage(content=system_message)]
+        # Initialize model context
+        if model_context is not None:
+            self._model_context = model_context
+        else:
+            self._model_context = UnboundedChatCompletionContext()
+        # Initialize structured message factory
 
-        self._model_context = UnboundedChatCompletionContext()
+        # Document generator initialization
+        current_file_path = __file__
+        self.current_dir_os_path = os.path.dirname(os.path.abspath(current_file_path))
+        self._variable_dict: Dict[str, Any] = {}
+
+        # Agent state management
+        self._state = "planning"  # Possible states: "planning", "generated", "revising", "completed"
+        self._generated_doc_path = None  # Store generated document path
+        self.data_response_planning = {}  # Planning phase data response
 
     @property
     def produced_message_types(self) -> Sequence[type[BaseChatMessage]]:
+        """Define message types produced by this agent"""
         return (TextMessage,)
 
     async def on_messages(
@@ -135,34 +204,26 @@ class ElectricalRequirementValidator(BaseChatAgent):
         """
         For debug only, skip the token-consuming and time-consuming process
         """
-        await asyncio.sleep(2)  # Sleep for 2 seconds
-        
-         # 保存文件
-        filtered_data = { 
-            "项目名称": "广州地铁5号线牵引变流器项目", 
-            "直流高压等级数值": "DC 1500V", 
-            "列车最大运行速度": "160km/h", 
-            "列车最大结构速度": "80km/h", 
-            "列车平均初始加速度": "(0—120km/h)≥0.5m/s_2", 
-            "列车平均加速度": "(0—120km/h)≥0.5m/s_2", 
-            "列车平均旅行速度": "100km/h", 
-            "编组规格": "4M2T", 
-            "重量要求": "全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%",
-            "complete": True,
-            "message": "需求提取已经全部完成",
-        }
-        
         logger.warning("In debug mode, using the foo on_messages_stream")          
-        file_name = "电气设计需求.json"
-        async with aiofiles.open(
-            self._work_root / self._work_relative_dir / file_name,
-            "w",
-            encoding="utf-8",
-        ) as f:
-            json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
-            await f.write(json_str)
-            
-        response_text = f"需求提取已经全部完成，提取的字段为：{json.dumps(filtered_data, ensure_ascii=False, indent=4)}, json 格式保存在{file_name} 文件中。"
+        await asyncio.sleep(2)  # Sleep for 2 seconds
+
+        # 保存文件
+        self.generator = GenDocxUseTemplate(
+            os.path.join(
+                self.current_dir_os_path,
+                "docx_template/上海机场联络线_牵引变流器方案设计说明书.docx",
+            ),
+            str(self._work_root / self._work_relative_dir),
+        )
+        file_name = "机场联络线_牵引变流器方案设计说明书.docx"
+        variable_dict = {
+            "_coverpage_Project_Name": "双电机功率电路",
+            "_1_Purpose_and_Scope": "本文档的目的是定义双电机功率电路的设计要求、功能描述和技术实现范围，为开发团队提供指导。本方案设计说明书适用于{{项目名称或对象}}的研制。",
+            "_11_1_Project_Name": "双电机功率电路",
+        }
+        self.generator.gen_docx(variable_dict, file_name)
+
+        response_text = "您的【设计文档】已经生成完成，总结内容如下：\n 聚焦牵引变流器项目的技术架构设计，涵盖电传动与辅助供电两大核心系统，明确功能、性能、接口、可靠性及全生命周期管理要求，为设备研制、试验验证及批量交付提供完整技术依据"
         return Response(
             chat_message=TextMessage(
                 content=response_text,
@@ -170,98 +231,163 @@ class ElectricalRequirementValidator(BaseChatAgent):
             ),
             inner_messages=[],
         )
-    
+
     async def on_messages_stream(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
         """
         Process the incoming messages with the ElectrialcalDocGen agent and yield events/responses as they happen.
-        """
-        logger.debug("Enter ElectricalRequirementValidator")
+        Args:
+            messages: Input message sequence
+            cancellation_token: Cancellation token
 
+        Yields:
+            Agent events, chat messages, or response objects
+        """
+
+        logger.debug("Enter ElectrialcalDocGenAgent", self._state)
+
+        # Add the messages to the model context.
         self.message_history.extend(messages)
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
-        # manage context messages
-        context_messages = self._thread_to_context(
-            system_prompt=ELECTRICAL_REQUIREMENT_VALIDATOR_PROMPT + "\n /no_think"
-        )
-
-        validation_list = [
-            "complete",
-            "message",
-            "项目名称",
-            "直流高压等级数值",
-            "列车最大运行速度",
-            "列车最大结构速度",
-            "列车平均初始加速度",
-            "列车平均加速度",
-            "列车平均旅行速度",
-            "编组规格",
-            "重量要求",
-        ]
         
-        try:
-            # DEBUG
-            # yield await self.on_messages_stream_foo()
-            # return
-            
-            # get json response result
-            self._data_response = await self._get_json_response(
+        # DEBUG
+        yield await self.on_messages_stream_foo()
+        return
+        # TODO project design generator agent, changes in future
+        if self._state == "planning":
+            # first step: jugement is contain all requirement message
+            # get context prompt
+            context_messages = self._thread_to_context(
+                system_prompt=VALIDATION_AND_EXTRACTION_MESSAGE_PROMPT + "\n /no_think"
+            )
+            temp_generate_key_list = [
+                "complete",
+                "message",
+                "document_type",
+                "project_name",
+            ]
+            # get json response using llm
+            self.data_response_planning = await self._get_json_response(
                 context_messages,
-                lambda data: self._validation_json(validation_list, data),
+                lambda data: self._validation_json(temp_generate_key_list, data),
                 cancellation_token,
             )
+            if self.data_response_planning["complete"] == False:
 
-            # parse data_response
-            if self._data_response["complete"] == False:
                 # yeild response to manager
                 yield Response(
                     chat_message=TextMessage(
-                        content=self._data_response["message"], source=self.name, metadata={"to_user": "yes"}
+                        content=self.data_response_planning["message"],
+                        source=self.name, 
+                        metadata={"to_user": "yes"}
                     ),
                     inner_messages=inner_messages,
                 )
                 return
             elif (
-                self._data_response["complete"] == True
+                self.data_response_planning["complete"] == True
             ):  # generate data_response successful
-                # 解析并过滤字段
-                filtered_data = {
-                    k: v
-                    for k, v in self._data_response.items()
-                    if k not in ["complete", "message"]
-                }
-
-                # 保存文件            
-                file_name = "电气设计需求.json"
-                async with aiofiles.open(
-                    self._work_root / self._work_relative_dir / file_name,
-                    "w",
-                    encoding="utf-8",
-                ) as f:
-                    json_str = json.dumps(filtered_data, ensure_ascii=False, indent=2)
-                    await f.write(json_str)
-                    
-                response_text = f"需求提取已经全部完成，提取的字段为：{json.dumps(filtered_data, ensure_ascii=False, indent=4)}, json 格式保存在{file_name} 文件中。"
-                yield Response(
-                    chat_message=TextMessage(
-                        content=response_text,
-                        source=self.name,
-                    ),
-                    inner_messages=[],
-                )
-                return
+                if self.data_response_planning["document_type"] not in [
+                    "方案设计说明书",
+                    "技术规格说明书",
+                ]:
+                    raise ValueError("JSON document_type 字段值无效")
+                self._state = "generated"
             else:
                 logger.debug("Invalid _data_response value.")
-                raise ValueError("无效的返回格式")
-        except Exception as e:
+                raise ValueError("Invalid _data_response value.")
+
+        if self._state == "generated":
+
+            output_filename = ""
+            if self.data_response_planning["document_type"] == "方案设计说明书":
+                # step 1: genernate all paragraphs, results save as self._variable_dict中
+                await self.generate_all_paragraphs(
+                    project_design_paragraph_prompt_dict,
+                    self._variable_dict,
+                    cancellation_token,
+                )
+                # step 2: fill vars to docx use template, save file in output_filename
+                self.generator = GenDocxUseTemplate(
+                    os.path.join(
+                        self.current_dir_os_path,
+                        "docx_template/0_系统部件方案设计说明书.docx",
+                    ),
+                    str(self._work_root / self._work_relative_dir),
+                )
+                # TODO  optimize filename
+                output_filename = f"{self.data_response_planning.get('project_name', '未命名')}{self.data_response_planning.get('document_type', None)}.docx"
+                self.generator.gen_docx(self._variable_dict, output_filename)
+
+            elif self.data_response_planning["document_type"] == "技术规格说明书":
+
+                await self.generate_all_paragraphs(
+                    urban_rail_traction_system_specification_dict,
+                    self._variable_dict,
+                    cancellation_token,
+                )
+                # save docx
+                self.generator = GenDocxUseTemplate(
+                    os.path.join(
+                        self.current_dir_os_path,
+                        "docx_template/1_城轨_系统技术规格说明书.docx",
+                    ),
+                    str(self._work_root / self._work_relative_dir),
+                )
+                output_filename = f"{self.data_response_planning.get('project_name', '未命名')}{self.data_response_planning.get('document_type', None)}.docx"
+                self.generator.gen_docx(self._variable_dict, output_filename)
+            else:
+                # invalid document_type
+                logger.debug(
+                    "Invalid document_type",
+                    self.data_response_planning["document_type"],
+                )
+                yield Response(
+                    chat_message=TextMessage(
+                        content="生成文档失败，请重新确认用户输入信息，重新规划生成文档。",
+                        source=self.name,
+                    ),
+                    inner_messages=inner_messages,
+                )
+                return
+            # step 3: yeild response to manager
+            from docx import Document
+
+            docx_obj = Document(os.path.join(str(self._work_root / self._work_relative_dir), output_filename))
+            docx_text = "\n".join([paragraph.text for paragraph in docx_obj.paragraphs])
+
+            # yeild generate docx response to managetr
+            # prepare llm message
+            conclusion_prompt = CONCLUSION_AND_REPLY_PROMPT.format(
+                docx_content=docx_text
+            )
+            conclusion_prompt_messages = [SystemMessage(content=conclusion_prompt)]
+            response_content = await self.model_client.create(
+                conclusion_prompt_messages,
+                json_output=(
+                    True if self.model_client.model_info["json_output"] else False
+                ),
+                cancellation_token=cancellation_token,
+            )
+            assert isinstance(response_content.content, str)
+            response_content_str = self._clean_response_content(
+                response_content.content
+            )
+            # yield response_content
             yield Response(
                 chat_message=TextMessage(
-                    content=f"电气需求提取失败: {e}",
+                    content=response_content_str,
                     source=self.name,
                 ),
                 inner_messages=[],
             )
+            self._state = "revising"
+
+        # NEW: 添加修订逻辑
+        if self._state == "revising":
+            self._state = "planning"
+            pass
 
     def _thread_to_context(
         self,
@@ -311,7 +437,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                         UserMessage(content=exception_message, source=self._name)
                     )
                 token_limited_messages = await self._model_context.get_messages()
-                
+
                 response = await self.model_client.create(
                     token_limited_messages,
                     json_output=(
@@ -319,20 +445,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
                     ),
                     cancellation_token=cancellation_token,
                 )
-                
-                # async for chunk in self.model_client.create_stream(
-                #     token_limited_messages,
-                #     tools=[],
-                #     json_output=(True if self.model_client.model_info["json_output"] else False),
-                #     cancellation_token=cancellation_token,
-                # ):
-                #     if isinstance(chunk, CreateResult):
-                #         response = chunk
-                #     elif isinstance(chunk, str):
-                #         print(chunk, flush=True, end="")
-                #     else:
-                #         raise RuntimeError(f"Invalid chunk type: {type(chunk)}")
-                
+
                 assert isinstance(response.content, str)
 
                 try:
@@ -365,13 +478,13 @@ class ElectricalRequirementValidator(BaseChatAgent):
             )
             raise ValueError("多次尝试后，无法获得有效的JSON响应")
         except Exception as e:
-            logger.debug(f"ElectricalRequirementValidator遇到错误: {e}", internal=False)
+            logger.debug(f"ElectrialcalDocGenAgent遇到错误: {e}", internal=False)
             raise
 
     def _validation_json(
         self, project_designed_generate_list: list[str], data_response: dict[str, Any]
     ) -> bool:
-        """验证JSON响应，返回验证结果"""
+        """validation json response function"""
         try:
             for k in project_designed_generate_list:
                 if k not in data_response:
@@ -393,12 +506,67 @@ class ElectricalRequirementValidator(BaseChatAgent):
         except Exception:
             return False
 
+    async def generate_all_paragraphs(
+        self,
+        paragraph_prompt_dict: Dict[str, Any],
+        output_dict: Dict[str, Any],
+        cancellation_token: CancellationToken,
+    ) -> bool:
+        """Generate all paragraph content
+
+        Args:
+            paragraph_prompt_dict: Paragraph prompt dictionary
+            output_dict: Output dictionary for storing generated paragraph content
+            cancellation_token: Cancellation token
+
+        Returns:
+            Whether generation was successful
+        """
+        # Iterate through all paragraph keys and generate content one by one
+        for temp_generate_key in list(paragraph_prompt_dict.keys()):
+            temp_generate_key_list = [temp_generate_key]
+            # construct context for llm
+            context_messages = self._thread_to_context(
+                system_prompt=paragraph_prompt_dict[temp_generate_key]
+            )
+            # get json response result using llm
+            data_response_generated = await self._get_json_response(
+                context_messages,
+                lambda data: self._validation_json(temp_generate_key_list, data),
+                cancellation_token,
+            )
+            #
+            for key in temp_generate_key_list:
+                output_dict[key] = data_response_generated[key]
+        return True
+
     async def on_reset(self, cancellation_token: CancellationToken) -> None:
         """Reset the assistant agent to its initialization state."""
         await self._model_context.clear()
+        self._state = "planning"
         self.message_history = []
 
+    async def _generate_document(self, variable_dict: Dict[str, Any]):
+        """Generate document (internal method)
+
+        Args:
+            variable_dict: Template variable dictionary
+        """
+        output_filename = (
+            f"{variable_dict.get('_coverpage_Project_Name', 'document')}.docx"
+        )
+        self.generator.gen_docx(variable_dict, output_filename)
+        return
+
     def _clean_response_content(self, content: str) -> str:
+        """Clean response content by removing markers and code blocks
+
+        Args:
+            content: Raw response content
+
+        Returns:
+            Cleaned content
+        """
         content = content.strip()
         # Remove thinking markers if present
         if "</think>" in content:
@@ -416,20 +584,6 @@ class ElectricalRequirementValidator(BaseChatAgent):
             if content.endswith(keyword):
                 content = content[: -len(keyword)].strip()
         return content.strip()
-
-    @staticmethod
-    async def _add_messages_to_context(
-        model_context: ChatCompletionContext,
-        messages: Sequence[BaseChatMessage],
-    ) -> None:
-        """
-        Add incoming messages to the model context.
-        """
-        for msg in messages:
-            if isinstance(msg, HandoffMessage):
-                for llm_msg in msg.context:
-                    await model_context.add_message(llm_msg)
-            await model_context.add_message(msg.to_model_message())
 
     @staticmethod
     def _get_compatible_context(
@@ -491,16 +645,7 @@ class ElectricalRequirementValidator(BaseChatAgent):
             )
             yield model_result
 
-# import PyPDF2
-# def extract_text_with_pypdf2(pdf_path:str) -> str:
-#     text = ""
-#     with open(pdf_path, 'rb') as file:
-#         pdf_reader = PyPDF2.PdfReader(file)
-#         num_pages = len(pdf_reader.pages)
-#         for page_num in range(num_pages):
-#             page = pdf_reader.pages[page_num]
-#             text += page.extract_text()
-#     return text
+
 async def main():
 
     from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -508,24 +653,26 @@ async def main():
     from autogen_agentchat.agents import UserProxyAgent
     from autogen_agentchat.teams import RoundRobinGroupChat
     from autogen_agentchat.conditions import TextMentionTermination
+
     model_client = OpenAIChatCompletionClient(
         model="qwq-32b",
         base_url="http://36.103.239.236:8000/v1/",
         api_key="placeholder",
+        timeout=120.0, 
         model_info={
             "vision": False,
             "function_calling": True,
-            "json_output": True,
+            "json_output": False,
             "family": ModelFamily.R1,
             "structured_output": True,
         },
     )
     current_file_path = __file__
     current_dir_os_path = os.path.dirname(os.path.abspath(current_file_path))
-    electrical_requirement_validator = ElectricalRequirementValidator(
-        "electrical_requirement_validator",
+    electrial_gendoc = ElectrialcalProjectDesignGenerator(
+        "electrial_gendoc",
         model_client,
-        work_root=Path(),
+        work_root=Path(current_dir_os_path),
         work_relative_dir=Path(),
         bind_root=Path(),
         bind_relative_dir=Path(),
@@ -546,53 +693,16 @@ async def main():
 
     # Create a team with the primary and critic agents. primary_agent, critic_agent,
     team = RoundRobinGroupChat(
-        [electrical_requirement_validator, critic_agent],
-        termination_condition=text_termination,
+        [electrial_gendoc, critic_agent], termination_condition=text_termination
     )
     # Use `asyncio.run(...)` when running in a script.
     from autogen_agentchat.ui import Console
-    
-    current_file_path = __file__
-    current_dir_os_path = os.path.dirname(os.path.abspath(current_file_path))
-    pdf_path = os.path.join(current_dir_os_path, "docx_template/Sign_RD0001414931_上海轨道交通市域线机场联络线工程车辆采购项目牵引系统采购技术条件20221115.pdf")
-    # extracted_text = extract_text_with_pypdf2(pdf_path).strip("\n")#[10000:20000]
-    # print(extracted_text)
-    task = "extracted_text"
-    
-#     task = """
-# 上海机场联络线市域动车组为动力分散式单层电动车组，轴重≯17t，采用 3 动 1 拖及
-# 4 动 4 拖两种编组形式 
-# 额定直流电压1800V
-# 列车试验速度：≥176km/h
-# 平均启动加速度（0～40km/h）：≥0.8m/s2（8 辆编组）、≥1.0m/s2（4 辆编组）
-# 平均加速度（0～160km/h）：≥0.38m/s2（8 辆编组）、≥0.45m/s2（4 辆编组）
-# 列车最高运行速度：≥160km/h
-# 直流
-# 环节
-# PWMI
-# 效率
-# 冷却
-# 额定输入频率 50 Hz
-# 额定开关频率 450Hz
-# 额定直流电压 1800V
-# 5 重量管理
-# 重量目标值是XXXkg， 偏差范围±X%（一般规定为-X%，+X%）。
-# 卖方必须使用附件18中05-1和05-2号文件模板的表格形式来制作并提交重量数据和重
-# 心数据的文件。
-# 每列车每年的运行里数300000 公里 (暂定)
-# 列车平均旅行速度95km/h
-# 每列车平均每天运营时间18 小时 (暂定)
-# 设计寿命30 年
-# 人工成本每人每小时人民币 40 元
-# 运行条件AW2 载荷
-# """
-    # - 编组规格： 4M2T
-    # - 重量要求： 全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%
-    await Console(team.run_stream(task=task))
+
+    await Console(team.run_stream(task="帮我生成一个技术规格书说明书"))
 
 
 if __name__ == "__main__":
-    logger.info("run _electrical_docgen_agent.py")
+    logger.debug("run _electrical_docgen_agent.py")
     import asyncio
 
     asyncio.run(main())

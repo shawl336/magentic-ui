@@ -26,7 +26,7 @@ const config: GatsbyConfig = {
   graphqlTypegen: true,
   proxy: {
     prefix: "/api",
-    url: "http://localhost:8081",
+    url: process.env.GATSBY_BACKEND_URL || "http://localhost:8081",
   },
   plugins: [
     "gatsby-plugin-postcss",

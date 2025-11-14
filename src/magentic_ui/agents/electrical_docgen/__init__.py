@@ -1,7 +1,9 @@
-from ._electrical_docgen_agent import ElectrialcalDocGenAgent
+from ._electrialcal_technicalspecification_generator import ElectrialcalTechnicalSpecificationGenerator
 from ._electrical_requirement_validator import ElectricalRequirementValidator
+from ._electrialcal_projectdesign_generator import ElectrialcalProjectDesignGenerator
 
 __all__ = [
-   "ElectrialcalDocGenAgent",
+   "ElectrialcalTechnicalSpecificationGenerator",
    "ElectricalRequirementValidator",
+   "ElectrialcalProjectDesignGenerator",
    ]

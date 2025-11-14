@@ -12,12 +12,22 @@ export const getServerUrl = () => {
     return "/api";
   }
   
-  // Use the current window location to build the API URL
-  // This ensures the frontend always calls the API on the same host/port it's served from
-  const protocol = window.location.protocol;
+  // Check if we should use direct backend URL (for remote access)
+  // If accessing from a non-localhost IP, use direct backend connection
   const hostname = window.location.hostname;
-  const port = window.location.port;
+  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
   
+  if (!isLocalhost) {
+    // For remote access, connect directly to backend on port 8081
+    // This assumes backend is accessible on the same IP as frontend
+    const protocol = window.location.protocol;
+    const backendPort = "8081";
+    return `${protocol}//${hostname}:${backendPort}/api`;
+  }
+  
+  // For localhost access, use proxy through Gatsby dev server
+  const protocol = window.location.protocol;
+  const port = window.location.port;
   const baseUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
   return `${baseUrl}/api`;
 };
