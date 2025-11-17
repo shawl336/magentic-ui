@@ -57,6 +57,7 @@ class TeamManager:
         run_id: int,
         inside_docker: bool = True,
         config: dict[str, Any] = {},
+        client_ip: Optional[str] = None,
     ) -> None:
         self.team: Team | None = None
         self.load_from_config = False
@@ -66,6 +67,7 @@ class TeamManager:
         self.run_without_docker = run_without_docker
         self.run_id = run_id
         self.config = config
+        self.client_ip = client_ip
         # Track uploaded files across the entire conversation
         self.uploaded_files: set[str] = set()
         # self._runtime = SingleThreadedAgentRuntime(ignore_unhandled_exceptions=False)
@@ -314,6 +316,7 @@ class TeamManager:
                     input_func=input_func,
                     paths=paths,
                     run_id=self.run_id,
+                    client_ip=self.client_ip,
                 ),
             )
             if hasattr(self.team, "_participants"):

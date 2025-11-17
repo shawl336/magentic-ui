@@ -7,6 +7,7 @@ from ._coding_delegator import CodingDelegatorAgent
 from .electrical_docgen import ElectricalRequirementValidator
 from ._electrical_design_dummy import ElectricalDesignAgent
 from ._material_selection import MaterialSelectionAgent
+from ._open_creo import OpenCreoAgent
 
 __all__ = [
     "WebSurfer",
@@ -18,5 +19,6 @@ __all__ = [
     "CodingDelegatorAgent",
     "ElectricalRequirementValidator",
     "ElectricalDesignAgent",
-    "MaterialSelectionAgent"
+    "MaterialSelectionAgent",
+    "OpenCreoAgent"
 ]

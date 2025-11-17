@@ -58,6 +58,8 @@ from ..utils import thread_to_context
 
 from ..approval_guard import BaseApprovalGuard
 from ..guarded_action import ApprovalDeniedError
+from ..tools.mcp import AggregateMcpWorkbench
+from autogen_core.tools import ToolSchema
 from ..teams.orchestrator._utils import extract_json_from_string
 # import logging
 # from autogen_agentchat import logger_NAME
@@ -74,6 +76,7 @@ class MaterialSelectionAgentConfig(BaseModel):
     work_relative_dir: str
     bind_root: str
     bind_relative_dir: str
+    client_ip: Optional[str] = None  # Client IP address for dynamic MCP URL generation
     # Optionally add code_executor config if needed
 
 
@@ -169,6 +172,7 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
         max_reties: int = 2,
         summarize_output: bool = False,
         approval_guard: BaseApprovalGuard | None = None,
+        client_ip: Optional[str] = None,
     ) -> None:
         """Initialize the CodingAgent.
 
@@ -205,6 +209,8 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
         self._work_relative_dir = work_relative_dir
         self._bind_root = bind_root
         self._bind_relative_dir = bind_relative_dir
+        self._simulink_workbench = None
+        self._client_ip = client_ip
     
         self._tools = self._setup_tools()
     
@@ -218,6 +224,34 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
             FunctionTool(self._read_file, description=self._read_file.__doc__ or "")
         ]
     
+    def _get_simulink_mcp_url(self) -> Optional[str]:
+        """Get Simulink MCP URL, dynamically constructed from client IP if available."""
+        # Priority 1: Use client_ip if provided and valid
+        if self._client_ip and self._client_ip.strip():
+            # Validate that client_ip is not localhost/127.0.0.1 (unless that's what we want)
+            # For now, we'll use it as-is since the server needs to connect to the client
+            # Construct URL from client IP: http://<client_ip>:8080/sse
+            # Strip any whitespace and ensure it's a valid IP/hostname
+            client_ip = self._client_ip.strip()
+            # Basic validation: should not be empty and should not contain protocol
+            if client_ip and not client_ip.startswith(('http://', 'https://')):
+                simulink_mcp_url = f"http://{client_ip}:8080/sse"
+                logger.info(f"Using client IP for Simulink MCP URL: {simulink_mcp_url}")
+                return simulink_mcp_url
+            else:
+                logger.warning(f"Invalid client IP format: {self._client_ip}, falling back to environment variable")
+        
+        # Priority 2: Use environment variable if set
+        simulink_mcp_url = os.environ.get("SIMULINK_MCP_URL", "").strip()
+        if simulink_mcp_url:
+            # Ensure URL ends with /sse
+            if not simulink_mcp_url.endswith("/sse"):
+                simulink_mcp_url = simulink_mcp_url.rstrip("/") + "/sse"
+            logger.info(f"Using environment variable for Simulink MCP URL: {simulink_mcp_url}")
+            return simulink_mcp_url
+        
+        return None
+    
     async def lazy_init(self) -> None:
         """Initialize the code executor if it has a start method.
 
@@ -226,6 +260,42 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
         """
         if self._did_lazy_init:
             return
+        
+        # Initialize Simulink MCP workbench if URL is configured
+        simulink_mcp_url = self._get_simulink_mcp_url()
+        if simulink_mcp_url:
+            try:
+                from ..tools.mcp import NamedMcpServerParams
+                from autogen_ext.tools.mcp import SseServerParams
+                
+                open_simulink_app_tool = NamedMcpServerParams(
+                    server_name="simulink_server", 
+                    server_params=SseServerParams(url=simulink_mcp_url)
+                )
+                self._simulink_workbench = AggregateMcpWorkbench(named_server_params=[open_simulink_app_tool])
+                logger.info(f"Initialized(lazy_init) Simulink MCP workbench with URL: {simulink_mcp_url}")
+            except Exception as e:
+                # 如果初始化失败，记录错误但不影响主流程
+                # 检查是否是 ExceptionGroup（通过检查是否有 exceptions 属性）
+                if hasattr(e, 'exceptions') and hasattr(e, '__class__') and ('ExceptionGroup' in str(type(e)) or 'BaseExceptionGroup' in str(type(e))):
+                    # 处理 ExceptionGroup（Python 3.11+）
+                    exceptions_list = getattr(e, 'exceptions', [])
+                    for sub_exception in exceptions_list:
+                        error_msg = str(sub_exception)
+                        error_type = type(sub_exception).__name__
+                        if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                            logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. MCP server requires authentication or is not available. Simulink tool will not be available.")
+                        else:
+                            logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. Simulink tool will not be available.")
+                else:
+                    # 处理普通异常
+                    error_msg = str(e)
+                    error_type = type(e).__name__
+                    if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                        logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. MCP server requires authentication or is not available. Simulink tool will not be available.")
+                    else:
+                        logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. Simulink tool will not be available.")
+                self._simulink_workbench = None
         
         self._did_lazy_init = True
 
@@ -469,7 +539,118 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
                     break
             
             assert response
-            complete = response["complete"]
+            # Ensure response is a dict before accessing its keys
+            if not isinstance(response, dict):
+                raise RuntimeError(f"响应类型错误，期望 dict，实际为 {type(response)}")
+            
+            # Handle complete field: it might be string "true"/"false" or boolean
+            complete_value = response.get("complete", False)
+            if isinstance(complete_value, str):
+                complete = complete_value.lower() in ("true", "1", "yes")
+            else:
+                complete = bool(complete_value)
+            
+            # 在需要用户确认之前（complete=false），先调用 Simulink MCP 工具打开软件
+            # 这样用户可以在软件中查看物料清单后再确认
+            if not complete:
+                # 调用 Simulink MCP 工具打开用户本地的软件
+                if not self._simulink_workbench:
+                    # 如果 workbench 未初始化，尝试获取 URL 并初始化
+                    simulink_mcp_url = self._get_simulink_mcp_url()
+                    if simulink_mcp_url:
+                        try:
+                            from ..tools.mcp import NamedMcpServerParams
+                            from autogen_ext.tools.mcp import SseServerParams
+                            
+                            open_simulink_app_server = NamedMcpServerParams(
+                                server_name="simulink_server", 
+                                server_params=SseServerParams(url=simulink_mcp_url)
+                            )
+                            self._simulink_workbench = AggregateMcpWorkbench(named_server_params=[open_simulink_app_server])
+                            logger.info(f"Initialized Simulink MCP workbench with URL: {simulink_mcp_url}")
+                        except Exception as e:
+                            # 如果初始化失败，记录错误但不影响主流程
+                            # 检查是否是 ExceptionGroup（通过检查是否有 exceptions 属性）
+                            if hasattr(e, 'exceptions') and hasattr(e, '__class__') and ('ExceptionGroup' in str(type(e)) or 'BaseExceptionGroup' in str(type(e))):
+                                # 处理 ExceptionGroup（Python 3.11+）
+                                exceptions_list = getattr(e, 'exceptions', [])
+                                for sub_exception in exceptions_list:
+                                    error_msg = str(sub_exception)
+                                    error_type = type(sub_exception).__name__
+                                    if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                                        logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. MCP server requires authentication or is not available. Simulink tool will not be available.")
+                                    else:
+                                        logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. Simulink tool will not be available.")
+                            else:
+                                # 处理普通异常
+                                error_msg = str(e)
+                                error_type = type(e).__name__
+                                if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                                    logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. MCP server requires authentication or is not available. Simulink tool will not be available.")
+                                else:
+                                    logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. Simulink tool will not be available.")
+                            self._simulink_workbench = None
+                
+                # 如果 workbench 已初始化，尝试调用工具
+                if self._simulink_workbench:
+                    try:
+                        # 获取可用的工具列表
+                        tools: List[ToolSchema] = await self._simulink_workbench.list_tools()
+                        
+                        # 查找 open_simulink 工具
+                        open_simulink_tool: ToolSchema | None = None
+                        # logger.info(f"Tools list: {tools}")
+                        for tool in tools:
+                            if "open_simulink" in tool.get("name"):
+                                open_simulink_tool = tool
+                                break
+                        
+                        if open_simulink_tool:
+                            # 准备工具调用参数
+                            # 根据工具的参数要求，构建调用参数
+                            tool_params = {
+                                "command":"",
+                            }
+                            
+                            # 调用工具打开 Simulink 软件
+                            logger.info(f"Calling Simulink MCP tool: {open_simulink_tool.get('name')} with params: {tool_params}")
+                            tool_call_result = await self._simulink_workbench.call_tool(
+                                open_simulink_tool.get("name"),
+                                tool_params,
+                                cancellation_token=cancellation_token,
+                            )
+                            
+                            # 处理工具调用结果
+                            tool_result_text = tool_call_result.to_text() if hasattr(tool_call_result, 'to_text') else str(tool_call_result)
+                            if tool_result_text:
+                                logger.info(f"Simulink tool called successfully: {tool_result_text}")
+                    except Exception as e:
+                        # 如果工具调用失败，记录错误但不影响主流程
+                        # 捕获网络错误、连接错误等，避免影响主流程
+                        # 检查是否是 ExceptionGroup（通过检查是否有 exceptions 属性）
+                        if hasattr(e, 'exceptions') and hasattr(e, '__class__') and ('ExceptionGroup' in str(type(e)) or 'BaseExceptionGroup' in str(type(e))):
+                            # 处理 ExceptionGroup（Python 3.11+）
+                            exceptions_list = getattr(e, 'exceptions', [])
+                            for sub_exception in exceptions_list:
+                                error_msg = str(sub_exception)
+                                error_type = type(sub_exception).__name__
+                                if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                                    logger.warning(f"Simulink MCP authentication error (non-critical): {sub_exception}. MCP server requires authentication or is not available. Skipping MCP tool call.")
+                                elif "ReadError" in error_msg or "ConnectionError" in error_msg or "ConnectError" in error_msg:
+                                    logger.warning(f"Simulink MCP connection error (non-critical): {sub_exception}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
+                                else:
+                                    logger.warning(f"Failed to call Simulink MCP tool (non-critical): {sub_exception}. Skipping MCP tool call.")
+                        else:
+                            # 处理普通异常
+                            error_msg = str(e)
+                            error_type = type(e).__name__
+                            if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
+                                logger.warning(f"Simulink MCP authentication error (non-critical): {e}. MCP server requires authentication or is not available. Skipping MCP tool call.")
+                            elif "ReadError" in error_msg or "ConnectionError" in error_msg or "ConnectError" in error_msg:
+                                logger.warning(f"Simulink MCP connection error (non-critical): {e}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
+                            else:
+                                logger.warning(f"Failed to call Simulink MCP tool (non-critical): {e}. Skipping MCP tool call.")
+            
             if complete:
                 # 如果生成了BOM list文件，展示文件供用户下载
                 bomlist_path = response.get("bomlist_path", "")
@@ -946,6 +1127,7 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
             description=self.description,
             max_reties=self._max_reties,
             summarize_output=self._summarize_output,
+            client_ip=self._client_ip,
             # TODO: Optionally add code_executor configuration if supported
         )
         
@@ -963,6 +1145,7 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
             description=config.description,
             max_reties=config.max_reties,
             summarize_output=config.summarize_output,
+            client_ip=config.client_ip,
             # TODO: Optionally load code_executor from config if provided
         )
 

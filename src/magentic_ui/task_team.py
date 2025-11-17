@@ -16,6 +16,7 @@ from .agents import (
     ElectricalDesignAgent,
     ElectricalRequirementValidator,
     MaterialSelectionAgent,
+    OpenCreoAgent,
 )
 from .agents import ElectrialcalTechnicalSpecificationGenerator, ElectrialcalProjectDesignGenerator
 from .agents.mcp import McpAgent
@@ -50,6 +51,7 @@ agent_class2name: Dict[Any, str] = {
     ElectricalDesignAgent: "electrical_design_agent",
     ElectricalRequirementValidator: "electrical_requirement_validator",
     MaterialSelectionAgent: "material_selection_agent",
+    OpenCreoAgent: "open_creo_agent",
 }
 
 async def get_task_team(
@@ -59,6 +61,7 @@ async def get_task_team(
     paths: RunPaths,
     run_id: int,
     runtime: AgentRuntime | None = None,
+    client_ip: Optional[str] = None,
 ) -> GroupChat | RoundRobinGroupChat:
     """
     Creates and returns a GroupChat team with specified configuration.
@@ -336,6 +339,7 @@ async def get_task_team(
         run_id=run_id,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
+        client_ip=client_ip,
     )
     
     electrical_requirement_validator = ElectricalRequirementValidator(
@@ -357,10 +361,20 @@ async def get_task_team(
         run_id=run_id,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
+        client_ip=client_ip,
+    )
+
+    open_creo_agent = OpenCreoAgent(
+        name=agent_class2name[OpenCreoAgent],
+        run_id=run_id,
+        model_client=model_client_file_surfer,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+        client_ip=client_ip,
     )
     
     # custom agents
-    team_participants.extend([electrialcal_technical_specification_generator, electrialcal_project_design_generator, coding_agent, electrical_design_dummy_agent, electrical_requirement_validator, material_selection_agent])
+    team_participants.extend([electrialcal_technical_specification_generator, electrialcal_project_design_generator, coding_agent, electrical_design_dummy_agent, electrical_requirement_validator, material_selection_agent, open_creo_agent])
     team = GroupChat(
         name="task_team",
         description="A team of agents that can help with the task",
