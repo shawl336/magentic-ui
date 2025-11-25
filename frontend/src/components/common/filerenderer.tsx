@@ -11,7 +11,7 @@ import {
 import MarkdownRenderer from "./markdownrender";
 import { ClickableImage } from "../views/atoms";
 import { AgentMessageConfig } from "../types/datamodel";
-import { getServerUrl } from "../utils";
+import { getServerUrl, getFileServerUrl } from "../utils";
 import DocumentIframe from "../views/chat/DetailViewer/document_iframe";
 import { useTranslation } from "react-i18next";
 
@@ -136,7 +136,7 @@ const FileModal: React.FC<FileModalProps> = ({
   useEffect(() => {
     if (file) {
       const fileUrl =
-        getServerUrl().replace("/api", "") +
+        getFileServerUrl() +
         `/${file.short_path || file.path || file.name}`;
       setDownloadUrl(fileUrl);
     } else {
@@ -337,7 +337,7 @@ const ImageThumbnail = memo<{ file: FileInfo }>(({ file }) => {
       try {
         setIsLoading(true);
         const fileUrl =
-          getServerUrl().replace("/api", "") +
+          getFileServerUrl() +
           `/${file.short_path || file.path || file.name}`;
 
         setThumbnailUrl(fileUrl);
@@ -390,7 +390,7 @@ const DownloadButton = memo<{ file: FileInfo }>(({ file }) => {
     e.stopPropagation(); // Prevent opening the modal
 
     const fileUrl =
-      getServerUrl().replace("/api", "") +
+      getFileServerUrl() +
       `/${file.short_path || file.path || file.name}`;
 
     // Create a temporary anchor element
@@ -524,7 +524,7 @@ const RenderFile: React.FC<RenderFileProps> = ({ message, sessionId }) => {
 
     // Construct the proper URL path for web access
     const fileUrl =
-      getServerUrl().replace("/api", "") +
+      getFileServerUrl() +
       `/${file.short_path || file.path || file.name}`;
 
     // For images and PDFs, just use the URL directly

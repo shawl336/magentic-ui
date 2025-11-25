@@ -2,6 +2,8 @@ import {
   PaperAirplaneIcon,
   ExclamationTriangleIcon,
   PauseCircleIcon,
+  MicrophoneIcon,
+  StopIcon,
 } from "@heroicons/react/24/outline";
 import * as React from "react";
 import { appContext } from "../../../hooks/provider";
@@ -34,6 +36,7 @@ import { McpServerSelector } from "../../features/McpServerSelector/McpServerSel
 import { MCPAgentConfig, MCPServerInfo } from "../../features/McpServersConfig/types";
 import { extractMcpServers } from "../../features/McpServersConfig/McpServersList";
 import { useTranslation } from "react-i18next";
+import { getServerUrl } from "../../utils";
 
 // Threshold for large text files (in characters)
 const LARGE_TEXT_THRESHOLD = 1500;
@@ -58,6 +61,7 @@ interface ChatInputProps {
   mcpSelectorDisabled: boolean;
   selectedMcpServers: string[];
   onSelectedMcpServersChange: (servers: string[]) => void;
+  runId?: number;
 }
 
 const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
@@ -76,7 +80,8 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
       onSubMenuChange,
       mcpSelectorDisabled,
       selectedMcpServers,
-      onSelectedMcpServersChange
+      onSelectedMcpServersChange,
+      runId
     },
     ref
   ) => {
@@ -101,7 +106,9 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     const [isRelevantPlansVisible, setIsRelevantPlansVisible] =
       React.useState(false);
     const [isPlanModalVisible, setIsPlanModalVisible] = React.useState(false);
-    const textAreaDefaultHeight = "64px";
+    // 输入框高度设置：最低4行(约80px)，最高10行(约200px)
+    const textAreaDefaultHeight = "100px"; // 3行
+    const textAreaMaxHeight = "260px"; // 8行
     const isInputDisabled =
       disabled ||
       runStatus === "active" ||
@@ -110,23 +117,40 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     const [mcpServers, setMcpServers] = React.useState<MCPServerInfo[]>([]);
     const [showScrollbar, setShowScrollbar] = React.useState(false);
     
+    // 录音相关状态
+    const [isRecording, setIsRecording] = React.useState(false);
+    const [isRecordingModalVisible, setIsRecordingModalVisible] = React.useState(false);
+    const [recordingTime, setRecordingTime] = React.useState(0);
+    const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+    const audioChunksRef = React.useRef<Blob[]>([]);
+    const recordingTimerRef = React.useRef<number | null>(null);
+    const [isConverting, setIsConverting] = React.useState(false);
+    const streamRef = React.useRef<MediaStream | null>(null);
+    const isCancelledRef = React.useRef<boolean>(false); // 标记是否取消录音
+    
     // Handle textarea auto-resize and scrollbar visibility
     React.useEffect(() => {
       if (textAreaRef.current) {
+        // 先重置高度以获取准确的scrollHeight
         textAreaRef.current.style.height = textAreaDefaultHeight;
         const scrollHeight = textAreaRef.current.scrollHeight;
-        textAreaRef.current.style.height = `${scrollHeight}px`;
+        const maxHeightPx = parseInt(textAreaMaxHeight);
         
-        // Determine if we need to show scrollbar (5 lines = approximately 120px)
-        const fiveLinesHeight = 120;
-        setShowScrollbar(scrollHeight > fiveLinesHeight);
+        // 限制高度不超过最大高度（10行）
+        const finalHeight = Math.min(scrollHeight, maxHeightPx);
+        textAreaRef.current.style.height = `${finalHeight}px`;
+        
+        // 超过10行(约200px)后显示滚动条
+        setShowScrollbar(scrollHeight > maxHeightPx);
       }
       if (textAreaDivRef.current) {
         textAreaDivRef.current.style.height = textAreaDefaultHeight;
         const scrollHeight = textAreaDivRef.current.scrollHeight;
-        textAreaDivRef.current.style.height = `${scrollHeight}px`;
+        const maxHeightPx = parseInt(textAreaMaxHeight);
+        const finalHeight = Math.min(scrollHeight, maxHeightPx);
+        textAreaDivRef.current.style.height = `${finalHeight}px`;
       }
-    }, [text, inputRequest]);
+    }, [text, inputRequest, textAreaDefaultHeight, textAreaMaxHeight]);
 
     React.useEffect(() => {
       if (!error) {
@@ -428,6 +452,320 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
       textAreaRef.current?.focus();
     };
 
+    // 清理录音资源（统一清理函数）
+    const cleanupRecording = () => {
+      setIsRecording(false);
+      if (recordingTimerRef.current !== null) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setIsRecordingModalVisible(false);
+    };
+
+    // 开始录音（参考demo逻辑：简单直接的录音流程）
+    const startRecording = async () => {
+      try {
+        // 请求麦克风权限
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        
+        // 创建 MediaRecorder，优先使用opus编码（质量更好）
+        const options: MediaRecorderOptions = {};
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          options.mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options.mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          options.mimeType = 'audio/mp4';
+        }
+        
+        const recorder = new MediaRecorder(stream, Object.keys(options).length > 0 ? options : undefined);
+        mediaRecorderRef.current = recorder;
+        audioChunksRef.current = [];
+        isCancelledRef.current = false;
+        
+        // 收集音频数据
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        
+        // 录音停止时的处理
+        recorder.onstop = () => {
+          // 停止媒体流
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          
+          // 如果未取消，处理录音完成
+          if (!isCancelledRef.current) {
+            handleRecordingComplete();
+          } else {
+            // 取消时清理状态
+            setIsRecordingModalVisible(false);
+            audioChunksRef.current = [];
+            setRecordingTime(0);
+          }
+        };
+        
+        // 错误处理
+        recorder.onerror = (event: any) => {
+          console.error("MediaRecorder error:", event);
+          message.error("录音过程中发生错误");
+          cleanupRecording();
+        };
+        
+        // 开始录音（每1秒收集一次数据）
+        recorder.start(1000);
+        
+        // 更新状态
+        setIsRecording(true);
+        setIsRecordingModalVisible(true);
+        setRecordingTime(0);
+        
+        // 开始计时（最多60秒）
+        const MAX_RECORDING_TIME = 60;
+        recordingTimerRef.current = window.setInterval(() => {
+          setRecordingTime(prev => {
+            const newTime = prev + 1;
+            // 达到最大时长自动停止
+            if (newTime >= MAX_RECORDING_TIME) {
+              stopRecording();
+              message.warning(`录音时长已达上限（${MAX_RECORDING_TIME}秒），已自动停止`);
+            }
+            return newTime;
+          });
+        }, 1000);
+        
+      } catch (error) {
+        console.error("Error starting recording:", error);
+        message.error("无法访问麦克风，请检查权限设置");
+        cleanupRecording();
+      }
+    };
+    
+    // 停止录音
+    const stopRecording = () => {
+      if (!mediaRecorderRef.current || !isRecording) {
+        return;
+      }
+      
+      if (mediaRecorderRef.current.state === 'inactive') {
+        return;
+      }
+      
+      setIsRecording(false);
+      isCancelledRef.current = false;
+      
+      // 清除计时器
+      if (recordingTimerRef.current !== null) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
+      // 停止录音（会在onstop回调中处理）
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error) {
+        console.error("Error stopping recorder:", error);
+        cleanupRecording();
+      }
+    };
+    
+    // 取消录音
+    const cancelRecording = () => {
+      if (!mediaRecorderRef.current || !isRecording) {
+        return;
+      }
+      
+      setIsRecording(false);
+      isCancelledRef.current = true;
+      
+      // 清除计时器和数据
+      if (recordingTimerRef.current !== null) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      audioChunksRef.current = [];
+      
+      // 停止录音
+      if (mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (error) {
+          console.error("Error stopping recorder:", error);
+        }
+      }
+      
+      // 清理资源
+      cleanupRecording();
+      setRecordingTime(0);
+      setIsConverting(false);
+    };
+    
+    // 处理录音完成（参考demo逻辑：录音 -> 转换 -> 发送）
+    const handleRecordingComplete = async () => {
+      // 如果已取消，不处理
+      if (isCancelledRef.current) {
+        return;
+      }
+      
+      // 检查录音数据
+      if (audioChunksRef.current.length === 0) {
+        message.warning("录音数据为空，请重新录音");
+        setIsRecordingModalVisible(false);
+        return;
+      }
+      
+      if (!runId) {
+        message.error("无法获取会话ID，请刷新页面后重试");
+        setIsRecordingModalVisible(false);
+        return;
+      }
+      
+      try {
+        setIsConverting(true);
+        
+        // 合并音频数据
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        
+        // 转换为PCM格式（16kHz，参考demo要求）
+        const pcmBlob = await convertWebmToPcm(audioBlob);
+        
+        // 创建FormData并发送到后端
+        const formData = new FormData();
+        const audioFile = new File([pcmBlob], `recording_${Date.now()}.pcm`, {
+          type: 'audio/pcm'
+        });
+        formData.append('audio_file', audioFile);
+        
+        // 调用后端API
+        const serverUrl = getServerUrl();
+        const response = await fetch(`${serverUrl}/runs/${runId}/speech-to-text`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMsg = errorData.detail || errorData.message || `HTTP ${response.status}: 语音转文字失败`;
+          throw new Error(errorMsg);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status && result.text) {
+          // 检查识别结果是否为空
+          const recognizedText = result.text.trim();
+          if (!recognizedText) {
+            throw new Error('识别结果为空，请重新录音');
+          }
+          
+          // 将转换后的文字填入输入框
+          const currentText = textAreaRef.current?.value || '';
+          const newText = currentText ? `${currentText}\n${recognizedText}` : recognizedText;
+          setText(newText);
+          if (textAreaRef.current) {
+            textAreaRef.current.value = newText;
+          }
+          message.success(`语音转文字成功：${recognizedText}`);
+        } else {
+          throw new Error(result.message || '语音转文字失败：未返回识别结果');
+        }
+        
+      } catch (error: any) {
+        console.error("Error converting speech to text:", error);
+        const errorMsg = error.message || "语音转文字失败，请重试";
+        message.error(errorMsg);
+      } finally {
+        setIsConverting(false);
+        setIsRecordingModalVisible(false);
+        audioChunksRef.current = [];
+        setRecordingTime(0);
+      }
+    };
+    
+    // 将 WebM 转换为 PCM 格式（参考demo要求：16kHz采样率，raw编码）
+    const convertWebmToPcm = async (webmBlob: Blob): Promise<Blob> => {
+      try {
+        const arrayBuffer = await webmBlob.arrayBuffer();
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // 目标采样率：16kHz（demo要求）
+        const targetSampleRate = 16000;
+        const originalSampleRate = audioBuffer.sampleRate;
+        const numberOfChannels = audioBuffer.numberOfChannels;
+        const duration = audioBuffer.duration;
+        
+        // 检查音频时长（至少0.5秒，最多60秒）
+        if (duration < 0.5) {
+          throw new Error("录音时长太短，请至少录制0.5秒");
+        }
+        if (duration > 60) {
+          throw new Error("录音时长过长，请控制在60秒以内");
+        }
+        
+        let pcmData: Float32Array;
+        
+        // 如果采样率已经是16kHz，直接使用
+        if (originalSampleRate === targetSampleRate) {
+          pcmData = audioBuffer.getChannelData(0);
+        } else {
+          // 使用OfflineAudioContext进行高质量重采样
+          const offlineContext = new OfflineAudioContext(
+            1, // 单声道
+            Math.floor(audioBuffer.length * targetSampleRate / originalSampleRate),
+            targetSampleRate
+          );
+          
+          const source = offlineContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(offlineContext.destination);
+          source.start(0);
+          
+          const resampledBuffer = await offlineContext.startRendering();
+          pcmData = resampledBuffer.getChannelData(0);
+        }
+        
+        // 转换为16-bit PCM
+        const pcm16 = new Int16Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          const s = Math.max(-1, Math.min(1, pcmData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        
+        return new Blob([pcm16.buffer], { type: 'audio/pcm' });
+      } catch (error: any) {
+        console.error("Error converting to PCM:", error);
+        if (error.message && (error.message.includes("太短") || error.message.includes("过长"))) {
+          throw error;
+        }
+        throw new Error("音频格式转换失败，请重试");
+      }
+    };
+    
+    // 格式化录音时间
+    const formatRecordingTime = (seconds: number): string => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+    
+    // 组件卸载时清理录音资源
+    React.useEffect(() => {
+      return () => {
+        cleanupRecording();
+      };
+    }, []);
+    
     const handleSubmit = () => {
       if (
         (textAreaRef.current?.value || fileList.length > 0) &&
@@ -743,6 +1081,57 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
           )}
         </Modal>
 
+        {/* 录音弹窗 */}
+        <Modal
+          title={isRecording ? t("正在录音") : isConverting ? t("正在转换") : t("录音")}
+          open={isRecordingModalVisible}
+          onCancel={isRecording ? cancelRecording : undefined}
+          footer={isRecording ? [
+            <Button key="cancel" onClick={cancelRecording}>
+              {t("取消")}
+            </Button>,
+            <Button
+              key="stop"
+              type="primary"
+              danger
+              onClick={stopRecording}
+              disabled={!isRecording}
+            >
+              {t("停止录音")}
+            </Button>,
+          ] : null}
+          closable={!isRecording && !isConverting}
+          maskClosable={false}
+        >
+          <div className="flex flex-col items-center justify-center py-8">
+            {isRecording ? (
+              <>
+                <div className="mb-4">
+                  <MicrophoneIcon className="h-16 w-16 text-red-500 animate-pulse" />
+                </div>
+                <div className="text-2xl font-bold mb-2">
+                  {formatRecordingTime(recordingTime)}
+                </div>
+                <div className="text-gray-500 text-sm">
+                  {t("正在录音中，请说话...")}
+                </div>
+              </>
+            ) : isConverting ? (
+              <>
+                <div className="mb-4">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+                </div>
+                <div className="text-lg font-semibold mb-2">
+                  {t("正在转换语音为文字...")}
+                </div>
+                <div className="text-gray-500 text-sm">
+                  {t("请稍候")}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </Modal>
+
         <div className="mt-2 rounded shadow-sm flex">
           <div
             className={`flex w-full ${dragOver ? "opacity-50" : ""}`}
@@ -772,9 +1161,9 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
                       } ${isInputDisabled ? "cursor-not-allowed" : ""
                       } focus:outline-none ${showScrollbar ? "scroll" : ""}`}
                     style={{
-                      maxHeight: "120px",
+                      maxHeight: textAreaMaxHeight,
                       overflowY: showScrollbar ? "auto" : "hidden",
-                      minHeight: "50px",
+                      minHeight: textAreaDefaultHeight,
                     }}
                     placeholder={
                       runStatus === "awaiting_input"
@@ -864,6 +1253,26 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
                       </Tooltip>
                     </Dropdown>
                   </div>
+                )}
+
+                {/* 录音按钮 */}
+                {enable_upload && !isInputDisabled && (
+                  <Tooltip
+                    title={<span className="text-sm">{t("语音转文字")}</span>}
+                    placement="top"
+                  >
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      disabled={isInputDisabled || isRecording}
+                      className={`flex justify-center items-center transition duration-300 ${isInputDisabled || isRecording
+                        ? "cursor-not-allowed opacity-50"
+                        : "hover:opacity-80"
+                        }`}
+                    >
+                      <MicrophoneIcon className="h-6 w-6 text-accent" />
+                    </button>
+                  </Tooltip>
                 )}
 
                 {runStatus === "active" && (

@@ -149,6 +149,8 @@ _add_origin("172.17.0.1", _port)
 # Add server LAN IPs so clients visiting http://<lan-ip>:<port> are allowed
 for _ip in _get_local_ips():
     _add_origin(_ip, _port)
+    # Also add frontend port (8000) for the same IPs
+    _add_origin(_ip, "8000")
 
 # Add any extra origins from env (comma-separated), e.g. http://192.168.1.10:3000
 _extra = os.environ.get("EXTRA_CORS_ORIGINS", "").strip()

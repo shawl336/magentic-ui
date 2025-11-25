@@ -78,13 +78,6 @@ class McpAgent(AssistantAgent):
                 }
                 setattr(event, "metadata", metadata)
 
-                # Truncate MCP tool execution results to prevent UI clutter
-                if isinstance(event, ToolCallExecutionEvent):
-                    for result in event.content:
-                        if hasattr(result, 'content') and isinstance(result.content, str):
-                            if len(result.content) > 100:
-                                result.content = result.content[:100] + "..."
-
             yield event
 
     @classmethod

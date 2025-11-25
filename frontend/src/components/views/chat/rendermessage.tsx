@@ -293,8 +293,15 @@ const RenderToolResult: React.FC<{ content: FunctionExecutionResult[] }> = memo(
     return (
       <div className="space-y-2 text-sm">
         {content.map((result) => {
-          const isExpanded = expandedResults[result.call_id];
-          const displayContent = isExpanded ? result.content : result.content.slice(0, 100) + (result.content.length > 100 ? "..." : "");
+          // 确保 content 是字符串类型
+          const contentStr = typeof result.content === 'string' ? result.content : String(result.content || '');
+          const isExpanded = expandedResults[result.call_id] === true;
+          const shouldTruncate = contentStr.length > 100;
+          
+          // 根据展开状态决定显示内容
+          const displayContent = isExpanded || !shouldTruncate 
+            ? contentStr 
+            : contentStr.slice(0, 100) + "...";
 
           return (
             <div key={result.call_id} className="rounded p-2">
@@ -304,7 +311,7 @@ const RenderToolResult: React.FC<{ content: FunctionExecutionResult[] }> = memo(
                 onClick={() => toggleExpand(result.call_id)}
               >
                 <MarkdownRenderer content={t("Result:") + " " + displayContent} indented={true} />
-                {result.content.length > 100 && (
+                {shouldTruncate && (
                   <div className="text-xs text-gray-500 mt-1">
                     {isExpanded ? t("Click to minimize") : t("Click to expand")}
                   </div>

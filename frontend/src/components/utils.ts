@@ -2,24 +2,71 @@ import { RcFile } from "antd/es/upload";
 import { IStatus } from "./types/app";
 
 export const getServerUrl = () => {
-  // If GATSBY_API_URL is explicitly set, use it
-  if (process.env.GATSBY_API_URL) {
-    return process.env.GATSBY_API_URL;
-  }
-  
   // For server-side rendering, use relative path
   if (typeof window === "undefined") {
+    // If GATSBY_API_URL is set and is a relative path, use it
+    if (process.env.GATSBY_API_URL && process.env.GATSBY_API_URL.startsWith("/")) {
+      return process.env.GATSBY_API_URL;
+    }
     return "/api";
   }
   
-  // Use the current window location to build the API URL
-  // This ensures the frontend always calls the API on the same host/port it's served from
-  const protocol = window.location.protocol;
+  // Get current hostname and protocol at runtime
   const hostname = window.location.hostname;
-  const port = window.location.port;
+  const protocol = window.location.protocol;
+  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
   
+  // Check if GATSBY_API_URL is set and is a relative path
+  if (process.env.GATSBY_API_URL && process.env.GATSBY_API_URL.startsWith("/")) {
+    // Use relative path - Gatsby proxy will handle it
+    return process.env.GATSBY_API_URL;
+  }
+  
+  // If GATSBY_API_URL is set but contains localhost, ignore it for remote access
+  // and use dynamic hostname instead
+  if (process.env.GATSBY_API_URL && process.env.GATSBY_API_URL.includes("localhost") && !isLocalhost) {
+    // For remote access, use the actual hostname instead of localhost
+    const backendPort = "8081";
+    return `${protocol}//${hostname}:${backendPort}/api`;
+  }
+  
+  // If GATSBY_API_URL is set and doesn't contain localhost, use it
+  if (process.env.GATSBY_API_URL && !process.env.GATSBY_API_URL.includes("localhost")) {
+    return process.env.GATSBY_API_URL;
+  }
+  
+  // For remote access (non-localhost), connect directly to backend on port 8081
+  if (!isLocalhost) {
+    // This assumes backend is accessible on the same IP as frontend
+    const backendPort = "8081";
+    return `${protocol}//${hostname}:${backendPort}/api`;
+  }
+  
+  // For localhost access, use proxy through Gatsby dev server
+  const port = window.location.port;
   const baseUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
   return `${baseUrl}/api`;
+};
+
+/**
+ * Get the base URL for file access (files, images, etc.)
+ * This always returns the direct backend URL, not through Gatsby proxy
+ * because file requests need to go directly to the backend server
+ */
+export const getFileServerUrl = () => {
+  // For server-side rendering, return empty string (relative path)
+  if (typeof window === "undefined") {
+    return "";
+  }
+  
+  // Get current hostname and protocol at runtime
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  const backendPort = "8081";
+  
+  // Always use direct backend connection for files
+  // This ensures files are accessible regardless of how the frontend is accessed
+  return `${protocol}//${hostname}:${backendPort}`;
 };
 
 export function setCookie(name: string, value: any, days: number) {

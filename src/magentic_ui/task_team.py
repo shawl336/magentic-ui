@@ -15,8 +15,10 @@ from .agents import (
     CodingDelegatorAgent,
     ElectricalDesignAgent,
     ElectricalRequirementValidator,
+    MaterialSelectionAgent,
+    OpenCreoAgent,
 )
-from .agents import ElectrialcalDocGenAgent
+from .agents import ElectrialcalTechnicalSpecificationGenerator, ElectrialcalProjectDesignGenerator
 from .agents.mcp import McpAgent
 from .agents.users import DummyUserProxy, MetadataUserProxy
 from .agents.web_surfer import WebSurferConfig
@@ -37,7 +39,8 @@ from .types import RunPaths
 from .utils import get_internal_urls
 
 agent_class2name: Dict[Any, str] = {
-    ElectrialcalDocGenAgent: "documentation_analysis_and_generation_agent",
+    ElectrialcalTechnicalSpecificationGenerator: "electrialcal_technical_specification_generator",
+    ElectrialcalProjectDesignGenerator: "electrialcal_project_design_generator",
     CodingDelegatorAgent: "coding_agent",
     CoderAgent: "coder_agent",
     FileSurfer: "file_surfer",
@@ -47,6 +50,8 @@ agent_class2name: Dict[Any, str] = {
     ApprovalGuard: "approval_guard",
     ElectricalDesignAgent: "electrical_design_agent",
     ElectricalRequirementValidator: "electrical_requirement_validator",
+    MaterialSelectionAgent: "material_selection_agent",
+    OpenCreoAgent: "open_creo_agent",
 }
 
 async def get_task_team(
@@ -56,6 +61,7 @@ async def get_task_team(
     paths: RunPaths,
     run_id: int,
     runtime: AgentRuntime | None = None,
+    client_ip: Optional[str] = None,
 ) -> GroupChat | RoundRobinGroupChat:
     """
     Creates and returns a GroupChat team with specified configuration.
@@ -303,8 +309,18 @@ async def get_task_team(
     
     # add electridocgen agent
     # TODO: add electradocgen model_client
-    electrical_gendoc = ElectrialcalDocGenAgent(
-        agent_class2name[ElectrialcalDocGenAgent],
+    electrialcal_technical_specification_generator = ElectrialcalTechnicalSpecificationGenerator(
+        agent_class2name[ElectrialcalTechnicalSpecificationGenerator],
+        model_client_file_surfer,
+        work_root=run_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=Path(),
+        bind_relative_dir=Path(),
+        model_client_stream = True,
+    )
+
+    electrialcal_project_design_generator = ElectrialcalProjectDesignGenerator(
+        agent_class2name[ElectrialcalProjectDesignGenerator],
         model_client_file_surfer,
         work_root=run_root,
         work_relative_dir=work_relative_dir,
@@ -323,6 +339,7 @@ async def get_task_team(
         run_id=run_id,
         model_context_token_limit=magentic_ui_config.model_context_token_limit,
         approval_guard=approval_guard,
+        client_ip=client_ip,
     )
     
     electrical_requirement_validator = ElectricalRequirementValidator(
@@ -333,9 +350,31 @@ async def get_task_team(
         bind_root=Path(),
         bind_relative_dir=Path(),
     )
+
+    material_selection_agent = MaterialSelectionAgent(
+        name=agent_class2name[MaterialSelectionAgent],
+        model_client=model_client_file_surfer,
+        work_root=run_root,
+        work_relative_dir=work_relative_dir,
+        bind_root=Path(),
+        bind_relative_dir=Path(),
+        run_id=run_id,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+        client_ip=client_ip,
+    )
+
+    open_creo_agent = OpenCreoAgent(
+        name=agent_class2name[OpenCreoAgent],
+        run_id=run_id,
+        model_client=model_client_file_surfer,
+        model_context_token_limit=magentic_ui_config.model_context_token_limit,
+        approval_guard=approval_guard,
+        client_ip=client_ip,
+    )
     
     # custom agents
-    team_participants.extend([electrical_gendoc, coding_agent, electrical_design_dummy_agent, electrical_requirement_validator])
+    team_participants.extend([electrialcal_technical_specification_generator, electrialcal_project_design_generator, coding_agent, electrical_design_dummy_agent, electrical_requirement_validator, material_selection_agent, open_creo_agent])
     team = GroupChat(
         name="task_team",
         description="A team of agents that can help with the task",

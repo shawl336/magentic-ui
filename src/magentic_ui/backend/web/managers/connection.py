@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Sequence, Union
@@ -136,6 +135,20 @@ class WebSocketManager:
 
         # do not create a new team manager if one already exists
         if run_id not in self._team_managers:
+            # Get client IP from WebSocket connection if available
+            client_ip = None
+            if run_id in self._connections:
+                websocket = self._connections[run_id]
+                # Get client IP from WebSocket
+                if hasattr(websocket, 'client') and websocket.client:
+                    client_ip = websocket.client.host
+                    # Validate that we got a valid IP address
+                    if client_ip and client_ip.strip():
+                        logger.info(f"Detected client IP for run {run_id}: {client_ip}")
+                    else:
+                        logger.warning(f"Invalid client IP detected for run {run_id}: {client_ip}")
+                        client_ip = None
+            
             team_manager = TeamManager(
                 internal_workspace_root=self.internal_workspace_root,
                 external_workspace_root=self.external_workspace_root,
@@ -143,6 +156,7 @@ class WebSocketManager:
                 run_id=run_id,
                 config=self.config,
                 run_without_docker=self.run_without_docker,
+                client_ip=client_ip,
             )
             self._team_managers[run_id] = team_manager
 
@@ -393,7 +407,12 @@ class WebSocketManager:
                             while True:
                                 # Check if run was closed/cancelled
                                 if run_id in self._closed_connections:
-                                    raise ValueError("会话已结束")
+                                    # 会话已关闭，取消任务而不是抛出错误
+                                    logger.info(f"Session closed for run {run_id} while waiting for input, cancelling task")
+                                    if run_id in self._cancellation_tokens:
+                                        self._cancellation_tokens[run_id].cancel()
+                                    # 返回一个默认响应，让任务能够优雅地结束
+                                    return "会话已结束，任务已取消"
 
                                 # Try to get response with short timeout
                                 try:

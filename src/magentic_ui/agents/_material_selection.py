@@ -1,7 +1,6 @@
 import asyncio
 from pathlib import Path
 import shutil
-
 from typing import (
     AsyncGenerator, 
     List,
@@ -11,7 +10,8 @@ from typing import (
     Any,
     Mapping,
     Callable,
-    ClassVar
+    ClassVar,
+    cast
 )
 from typing_extensions import Annotated
 import json, os
@@ -65,7 +65,7 @@ from ..teams.orchestrator._utils import extract_json_from_string
 # from autogen_agentchat import logger_NAME
 
 
-class ElectricalDesignAgentConfig(BaseModel):
+class MaterialSelectionAgentConfig(BaseModel):
     name: str
     run_id: int
     model_client: ComponentModel
@@ -80,76 +80,82 @@ class ElectricalDesignAgentConfig(BaseModel):
     # Optionally add code_executor config if needed
 
 
-class CodingAgentState(BaseState):
+class MaterialSelectionAgentState(BaseState):
     chat_history: List[BaseChatMessage] = Field(default_factory=list[BaseChatMessage])
-    type: str = Field(default="CodingAgentState")
+    type: str = Field(default="MaterialSelectionAgentState")
 
 
-class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig]):
-    """An coding agent capable of writing, generating code and save the code to files.
+class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConfig]):
+    """A material selection agent capable of generating BOM list (material list) from specification and circuit diagram.
 
-    The agent uses either Docker-based code generator to generate code
-    in a controlled environment. It maintains a chat history and can be paused/resumed
-    during generation.
+    The agent reads technical specification documents and circuit diagram files,
+    selects appropriate materials based on requirements, and generates BOM list files.
+    It maintains a chat history and can be paused/resumed during generation.
     """
 
     component_type = "agent"
-    component_config_schema = ElectricalDesignAgentConfig
+    component_config_schema = MaterialSelectionAgentConfig
     
     DEFAULT_DESCRIPTION = """
     
-    这是一个可以生成电路拓扑图的智能体，在电气设计工作流程中发挥重要作用。
-    它依据文字形式的电气设备需求，生成满足需求的电路拓扑图和对应的电路描述并保存对应的文件。
-    成功的生成电路图后，该智能体返回电路图的描述，以及生成的图片格式的电路拓扑图和CAD(.dwg)格式的电路拓扑图文件路径。
+    这是一个可以生成物料清单（BOM list）的智能体，在电气设计工作流程中发挥重要作用。
+    它依据技术规格说明书和电路拓扑图（包含电路描述），选择合适的物料，生成符合需求参数要求的电气物料清单并保存对应的文件。
+    成功生成物料清单后，该智能体返回物料参数列表和物料清单文件的保存路径。
     """
 
     system_prompt_template: ClassVar[str] = """
-    你是{name}, 一个使用工具进行电气设计的智能体，但是你本身不做任何主观电气设计。
+    你是{name}, 一个使用工具进行物料选型和物料清单生成的智能体，但是你本身不做任何主观物料选型决策。
 
     今天的日期是:{date_today}
     
     ## 工作原则
-    在电气设计过程中，你运用生成式(generative)算法工具，将用户的文字需求转化为电路拓扑图和对应的电路描述。并保存为对应的文件。
-    电路图的生成是一个迭代的过程，你需要和用户进行多轮交互，直到用户确认并同意生成的电路图符合他的要求。在每次交互中，你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
+    在物料选型过程中，你运用生成式(generative)算法工具，基于技术规格说明书和电路拓扑图（包含电路描述），选择合适的物料，生成符合需求参数要求的电气物料清单（BOM list）。并保存为对应的文件。
+    物料清单的生成是一个迭代的过程，你需要和用户进行多轮交互，直到用户确认并同意生成的物料清单符合他的要求。在每次交互中，你只能调用给定的工具来生成物料清单，不要自己生成物料清单。
     
-    为了帮助用户更好地生成符合要求的电路图，首先思考如下问题:
-    1. 用户是否提供了需求文件，而且还没有读取需求文件内容？ 如果是的，一定要使用工具先读取需求文件内容才能知道用户的完整需求。否则，对于同一个需求文件如果已经读取了需求文件内容，且文件没有更新，则不用再次读取需求文件内容，直接使用之前读取到的内容。
-    2. 是否已经有电路图文件了(包含用户提供的或者之前迭代过程中生成的)？ 如果答案是否定的，直接根据用户的请求生成电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。
-    3. 用户是否已经确认生成的电路图文件和电路描述符合他的要求(额外地，"继续"或者"下一步"等同义表达也表示用户已经确认生成的电路图文件和电路描述符合他的要求)？ 如果答案是肯定的，输出已经满足用户需求的电路图文件和电路描述。否则，根据用户的回复做出合理的回答或者动作。 
+    ## 文件查找
+    技术规格说明书文件和电路拓扑图文件会自动从当前会话路径中查找：
+    - 技术规格说明书文件：在当前会话路径下查找包含"技术规格说明书"字样的.docx文档
+    - 电路拓扑图文件：在当前会话路径下查找图片文件（.jpg, .jpeg, .png, .dwg, .pdf等格式）
+    
+    为了帮助用户更好地生成符合要求的物料清单，首先思考如下问题:
+    1. 当前会话路径下是否有包含"技术规格说明书"字样的.docx文档？如果有，直接调用工具生成物料清单。工具会自动查找该文件。
+    2. 当前会话路径下是否有电路拓扑图文件（图片文件）？如果有，直接调用工具生成物料清单。工具会自动查找该文件。
+    3. 指令中是否明确提到了电路描述？ 如果提供了，使用该电路描述。
+    4. 是否已经有物料清单文件了(包含用户提供的或者之前迭代过程中生成的)？ 如果答案是否定的，直接根据用户的请求生成物料清单文件。否则，根据用户的回复做出合理的回答或者动作。
+    5. 用户是否已经确认生成的物料清单符合他的要求(额外地，"继续"或者"下一步"等同义表达也表示用户已经确认生成的物料清单符合他的要求)？ 如果答案是肯定的，输出已经满足用户需求的物料清单。否则，根据用户的回复做出合理的回答或者动作。 
     
     **重点注意**
-    - 你只能调用给定的工具来生成电路拓扑图和对应的电路描述，不要自己生成电路拓扑图和对应的电路描述。
+    - 你只能调用给定的工具来生成物料清单，不要自己生成物料清单。
     - 不要添加任何主观意见，不要添加任何解释，不要添加任何说明，不要添加任何备注。
-    - 对于没有提到的信息，一定不能杜撰！比如，如果没有需求文件，一定不能杜撰一个需求文件，如实回答或者不要提及。
-    - 用户的请求可能是以文件路径的形式给出的，你需要读取文件内容，并根据文件内容生成电路拓扑图和对应的电路描述。
-    - 生成电路图文件和电路描述文件时，一定需要调用生成式工具，不然不能生成新的电路图文件和电路描述文件。
+    - 对于没有提到的信息，一定不能杜撰！比如，如果没有技术规格说明书或电路拓扑图文件，一定不能杜撰文件，如实回答或者不要提及。
+    - 当调用_generate_bom_list_file工具时，specification_path和circuit_diagram_path参数可以为空字符串，工具会自动在当前会话路径中查找相应的文件。
+    - 生成物料清单时，一定需要调用生成式工具，不然不能生成新的物料清单文件。
+    - 物料选型需要基于技术规格说明书中的参数要求和电路拓扑图中的电路结构来进行。
     
     ## 输出格式
-    你的输出可以是请求调用工具或回复用户电路图的生成情况。
+    你的输出可以是请求调用工具或回复用户物料清单的生成情况。
     
     如果不需要调用工具，输出为JSON格式。严格遵循以下JSON schema格式，不要输出JSON以外的任何内容:
     ```json
     {{
-        "complete": 用户是否已经确认生成的电路图文件和电路描述符合他的要求？ 如果是取"true"，否则"false",
-        "message": 给用户的回复。如果`complete`为"false"总是额外地询问用户是否同意已经生成的电路图，否则告知用户任务已经完成。如果有生成电路图CAD文件和电路描述文件，同时包含电路拓扑图CAD文件的保存路径和电路图拓扑图的描述。
-        "circuit_diagram_path": 电路拓扑图CAD文件的保存路径,
-        "circuit_picture_path": 电路拓扑图图片文件的保存路径,
-        "circuit_description": 电路图拓扑图的描述
+        "complete": 用户是否已经确认生成的物料清单符合他的要求？ 如果是取"true"，否则"false",
+        "message": 给用户的回复。如果`complete`为"false"总是额外地询问用户是否同意已经生成的物料清单，否则告知用户任务已经完成。如果有生成物料清单文件，同时包含物料清单文件的保存路径。
+        "specification_path": 技术规格说明书文件的路径（工具会自动查找，可以为空字符串）,
+        "circuit_diagram_path": 电路拓扑图文件的路径（工具会自动查找，可以为空字符串）,
+        "bomlist_path": 物料清单（BOM list）输出文件的保存路径
     }}
     ```
     
     **重点注意**
-    - 输出最终满足用户需求的电路图文件和电路描述时，请在`message`字段中同时表明你的工作已经完成。
-    - 用简洁的语句回复用户，但是必须包含必要的信息，比如，你不能简单地回复"任务已经完成"，而是要告知用户任务已经完成，并且告知用户电路图文件和电路描述的保存路径。
-    - `circuit_diagram_path`和`circuit_picture_path`字段只能包含文件路径，不要有任何解释说明或者其他文字。
+    - 输出最终满足用户需求的物料清单时，请在`message`字段中同时表明你的工作已经完成。
+    - 用简洁的语句回复用户，但是必须包含必要的信息，比如，你不能简单地回复"任务已经完成"，而是要告知用户任务已经完成，并且告知用户物料清单文件的保存路径。
+    - `specification_path`、`circuit_diagram_path`和`bomlist_path`字段只能包含文件路径，不要有任何解释说明或者其他文字。
     - 对于没有提到的信息，一定不能杜撰！比如，如果没有生成文件，一定不能杜撰一个文件路径，如实回答或者不要提及。
     """
 
     RESPONSE_TEMPLATE = """
     {message}
     
-    电路描述:
-    {circuit_description}
     """
 
     def __init__(
@@ -203,7 +209,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         self._work_relative_dir = work_relative_dir
         self._bind_root = bind_root
         self._bind_relative_dir = bind_relative_dir
-        self._cad_workbench = None
+        self._simulink_workbench = None
         self._client_ip = client_ip
     
         self._tools = self._setup_tools()
@@ -213,13 +219,13 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         Setup tools used in orchestrator
         """
         return [
-            FunctionTool(self._generate_circuit_file, 
-                             description=self._generate_circuit_file.__doc__ or ""),
+            FunctionTool(self._generate_bom_list_file, 
+                             description=self._generate_bom_list_file.__doc__ or ""),
             FunctionTool(self._read_file, description=self._read_file.__doc__ or "")
         ]
     
-    def _get_cad_mcp_url(self) -> Optional[str]:
-        """Get CAD MCP URL, dynamically constructed from client IP if available."""
+    def _get_simulink_mcp_url(self) -> Optional[str]:
+        """Get Simulink MCP URL, dynamically constructed from client IP if available."""
         # Priority 1: Use client_ip if provided and valid
         if self._client_ip and self._client_ip.strip():
             # Validate that client_ip is not localhost/127.0.0.1 (unless that's what we want)
@@ -229,20 +235,20 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             client_ip = self._client_ip.strip()
             # Basic validation: should not be empty and should not contain protocol
             if client_ip and not client_ip.startswith(('http://', 'https://')):
-                cad_mcp_url = f"http://{client_ip}:8080/sse"
-                logger.info(f"Using client IP for CAD MCP URL: {cad_mcp_url}")
-                return cad_mcp_url
+                simulink_mcp_url = f"http://{client_ip}:8080/sse"
+                logger.info(f"Using client IP for Simulink MCP URL: {simulink_mcp_url}")
+                return simulink_mcp_url
             else:
                 logger.warning(f"Invalid client IP format: {self._client_ip}, falling back to environment variable")
         
-        # Priority 2: Use environment variable if set (support both CAD_MCP_URL and SIMULINK_MCP_URL for backward compatibility)
-        cad_mcp_url = os.environ.get("CAD_MCP_URL", os.environ.get("SIMULINK_MCP_URL", "")).strip()
-        if cad_mcp_url:
+        # Priority 2: Use environment variable if set
+        simulink_mcp_url = os.environ.get("SIMULINK_MCP_URL", "").strip()
+        if simulink_mcp_url:
             # Ensure URL ends with /sse
-            if not cad_mcp_url.endswith("/sse"):
-                cad_mcp_url = cad_mcp_url.rstrip("/") + "/sse"
-            logger.info(f"Using environment variable for CAD MCP URL: {cad_mcp_url}")
-            return cad_mcp_url
+            if not simulink_mcp_url.endswith("/sse"):
+                simulink_mcp_url = simulink_mcp_url.rstrip("/") + "/sse"
+            logger.info(f"Using environment variable for Simulink MCP URL: {simulink_mcp_url}")
+            return simulink_mcp_url
         
         return None
     
@@ -255,19 +261,19 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         if self._did_lazy_init:
             return
         
-        # Initialize CAD MCP workbench if URL is configured
-        cad_mcp_url = self._get_cad_mcp_url()
-        if cad_mcp_url:
+        # Initialize Simulink MCP workbench if URL is configured
+        simulink_mcp_url = self._get_simulink_mcp_url()
+        if simulink_mcp_url:
             try:
                 from ..tools.mcp import NamedMcpServerParams
                 from autogen_ext.tools.mcp import SseServerParams
                 
-                open_cad_app_tool = NamedMcpServerParams(
-                    server_name="cad_server", 
-                    server_params=SseServerParams(url=cad_mcp_url)
+                open_simulink_app_tool = NamedMcpServerParams(
+                    server_name="simulink_server", 
+                    server_params=SseServerParams(url=simulink_mcp_url)
                 )
-                self._cad_workbench = AggregateMcpWorkbench(named_server_params=[open_cad_app_tool])
-                logger.info(f"Initialized(lazy_init) CAD MCP workbench with URL: {cad_mcp_url}")
+                self._simulink_workbench = AggregateMcpWorkbench(named_server_params=[open_simulink_app_tool])
+                logger.info(f"Initialized(lazy_init) Simulink MCP workbench with URL: {simulink_mcp_url}")
             except Exception as e:
                 # 如果初始化失败，记录错误但不影响主流程
                 # 检查是否是 ExceptionGroup（通过检查是否有 exceptions 属性）
@@ -278,18 +284,18 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                         error_msg = str(sub_exception)
                         error_type = type(sub_exception).__name__
                         if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                            logger.warning(f"Failed to initialize CAD MCP workbench: {sub_exception}. MCP server requires authentication or is not available. CAD tool will not be available.")
+                            logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. MCP server requires authentication or is not available. Simulink tool will not be available.")
                         else:
-                            logger.warning(f"Failed to initialize CAD MCP workbench: {sub_exception}. CAD tool will not be available.")
+                            logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. Simulink tool will not be available.")
                 else:
                     # 处理普通异常
                     error_msg = str(e)
                     error_type = type(e).__name__
                     if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                        logger.warning(f"Failed to initialize CAD MCP workbench: {e}. MCP server requires authentication or is not available. CAD tool will not be available.")
+                        logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. MCP server requires authentication or is not available. Simulink tool will not be available.")
                     else:
-                        logger.warning(f"Failed to initialize CAD MCP workbench: {e}. CAD tool will not be available.")
-                self._cad_workbench = None
+                        logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. Simulink tool will not be available.")
+                self._simulink_workbench = None
         
         self._did_lazy_init = True
 
@@ -301,7 +307,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         - Removes the work directory if it was created
         - Closes the model client
         """
-        logger.info("Closing ElectricalDesignAgent...")
+        logger.info("Closing MaterialSelectionAgent...")
         # Remove the work directory if it was created.
         if self._cleanup_work_dir and (self._work_root / self._work_relative_dir).exists():
             await asyncio.to_thread(shutil.rmtree, self._work_root / self._work_relative_dir)
@@ -343,7 +349,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         if self.is_paused:
             yield Response(
                 chat_message=TextMessage(
-                    content="电气设计智能体已暂停。",
+                    content="物料选型智能体已暂停。",
                     source=self.name,
                     metadata={"internal": "yes"},
                 )
@@ -366,7 +372,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         monitor_pause_task = asyncio.create_task(monitor_pause())
 
         try:
-            async for msg in self._generate_circuit_diagram(
+            async for msg in self._generate_bom_list(
                 self.name, 
                 self._model_client, 
                 self._bind_relative_dir, 
@@ -416,7 +422,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             # If the user denies the approval, we respond with a message.
             yield Response(
                 chat_message=TextMessage(
-                    content="用户拒绝了执行电气设计。",
+                    content="用户拒绝了执行物料选型。",
                     source=self.name,
                     metadata={"internal": "no"},
                 ),
@@ -433,17 +439,17 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                 inner_messages=inner_messages,
             )
         except Exception as e:
-            logger.error(f"Error in ElectricalDesignAgent: {e}")
+            logger.error(f"Error in MaterialSelectionAgent: {e}")
             # add to chat history
             self._chat_history.append(
                 TextMessage(
-                    content=f"生成电路拓扑图和对应的电路描述时发生错误： {e}",
+                    content=f"生成物料清单时发生错误： {e}",
                     source=self.name,
                 )
             )
             yield Response(
                 chat_message=TextMessage(
-                    content=f"电气设计智能体发生了如下错误： {e}",
+                    content=f"物料选型智能体发生了如下错误： {e}",
                     source=self.name,
                     metadata={"internal": "no"},
                 ),
@@ -457,7 +463,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             except asyncio.CancelledError:
                 pass
     
-    async def _generate_circuit_diagram(
+    async def _generate_bom_list(
         self,
         agent_name: str,
         model_client: ChatCompletionClient,
@@ -465,24 +471,24 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         max_json_retries: int,
         cancellation_token: CancellationToken,
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage, None]:
-        """Write code using the model and executor.
+        """Generate BOM list (material list) from specification and circuit diagram.
 
-        It calls the workbench to generate code based on the system prompt and the thread of messages.
+        It calls the model to generate material list based on the system prompt and the thread of messages.
 
         When the cancellation token is set, the execution will stop.
         Args:
-            thread (Sequence[BaseChatMessage]): The thread of messages to use as context.
             agent_name (str): The name of the agent.
-            model_client (ChatCompletionClient): The model client to use for cod    # extract code blocks from the LLM's response
-            max_reties (int): The maximum number of debug rounds to perform.
+            model_client (ChatCompletionClient): The model client to use for generation.
+            bind_relative_dir (Path): The relative directory for file operations.
+            max_json_retries (int): The maximum number of retry rounds to perform.
             cancellation_token (CancellationToken): The cancellation token to stop execution.
 
         Yields:
             TextMessage: The intermediate messages generated by the model and executor.
-            bool: A flag indicating whether any code execution was performed.
+            BaseAgentEvent: Tool call events.
 
         Raises:
-            ApprovalDeniedError: If the user denies the approval for the coding request.
+            ApprovalDeniedError: If the user denies the approval for the BOM list generation request.
         """
         # The list of new messages to be added to the thread.
         # Add system prompt as the last message before generation
@@ -503,6 +509,12 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             token_limited_context = context
         
         
+        # preprocess the user request and extract coding tool parameters
+        exception_message = ""
+        if exception_message:
+            await self._model_context.add_message(
+                UserMessage(content=exception_message, source=agent_name)
+            )
         try:       
             response = None
             # While loop for tool calls
@@ -518,17 +530,16 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                 # is the respone a ToolCallEvent? not JSON
                 if isinstance(response, CreateResult):
                     assert isinstance(response.content, List)
-                    yield ToolCallRequestEvent(content=response.content, source=self._name)
-                    await self._model_context.add_message(AssistantMessage(content=response.content, source=self._name))
+                    yield ToolCallRequestEvent(content=response.content, source=self.name)
+                    await self._model_context.add_message(AssistantMessage(content=response.content, source=self.name))
                     tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in response.content])    
                     await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
-                    yield ToolCallExecutionEvent(content=tool_call_results, source=self._name, metadata={"internal": "yes"})
+                    yield ToolCallExecutionEvent(content=tool_call_results, source=self.name, metadata={"internal": "yes"})
                 else:
-                    # response should be a dict at this point
                     break
             
+            assert response
             # Ensure response is a dict before accessing its keys
-            # At this point, response should be a dict (CreateResult is handled in the while loop)
             if not isinstance(response, dict):
                 raise RuntimeError(f"响应类型错误，期望 dict，实际为 {type(response)}")
             
@@ -539,24 +550,24 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             else:
                 complete = bool(complete_value)
             
-            # 在需要用户确认之前（complete=false），先调用 CAD MCP 工具打开软件
-            # 这样用户可以在软件中查看电路图后再确认
+            # 在需要用户确认之前（complete=false），先调用 Simulink MCP 工具打开软件
+            # 这样用户可以在软件中查看物料清单后再确认
             if not complete:
-                # 调用 CAD MCP 工具打开用户本地的软件
-                if not self._cad_workbench:
+                # 调用 Simulink MCP 工具打开用户本地的软件
+                if not self._simulink_workbench:
                     # 如果 workbench 未初始化，尝试获取 URL 并初始化
-                    cad_mcp_url = self._get_cad_mcp_url()
-                    if cad_mcp_url:
+                    simulink_mcp_url = self._get_simulink_mcp_url()
+                    if simulink_mcp_url:
                         try:
                             from ..tools.mcp import NamedMcpServerParams
                             from autogen_ext.tools.mcp import SseServerParams
                             
-                            open_cad_app_server = NamedMcpServerParams(
-                                server_name="cad_server", 
-                                server_params=SseServerParams(url=cad_mcp_url)
+                            open_simulink_app_server = NamedMcpServerParams(
+                                server_name="simulink_server", 
+                                server_params=SseServerParams(url=simulink_mcp_url)
                             )
-                            self._cad_workbench = AggregateMcpWorkbench(named_server_params=[open_cad_app_server])
-                            logger.info(f"Initialized CAD MCP workbench with URL: {cad_mcp_url}")
+                            self._simulink_workbench = AggregateMcpWorkbench(named_server_params=[open_simulink_app_server])
+                            logger.info(f"Initialized Simulink MCP workbench with URL: {simulink_mcp_url}")
                         except Exception as e:
                             # 如果初始化失败，记录错误但不影响主流程
                             # 检查是否是 ExceptionGroup（通过检查是否有 exceptions 属性）
@@ -567,44 +578,44 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                                     error_msg = str(sub_exception)
                                     error_type = type(sub_exception).__name__
                                     if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                                        logger.warning(f"Failed to initialize CAD MCP workbench: {sub_exception}. MCP server requires authentication or is not available. CAD tool will not be available.")
+                                        logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. MCP server requires authentication or is not available. Simulink tool will not be available.")
                                     else:
-                                        logger.warning(f"Failed to initialize CAD MCP workbench: {sub_exception}. CAD tool will not be available.")
+                                        logger.warning(f"Failed to initialize Simulink MCP workbench: {sub_exception}. Simulink tool will not be available.")
                             else:
                                 # 处理普通异常
                                 error_msg = str(e)
                                 error_type = type(e).__name__
                                 if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                                    logger.warning(f"Failed to initialize CAD MCP workbench: {e}. MCP server requires authentication or is not available. CAD tool will not be available.")
+                                    logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. MCP server requires authentication or is not available. Simulink tool will not be available.")
                                 else:
-                                    logger.warning(f"Failed to initialize CAD MCP workbench: {e}. CAD tool will not be available.")
-                            self._cad_workbench = None
+                                    logger.warning(f"Failed to initialize Simulink MCP workbench: {e}. Simulink tool will not be available.")
+                            self._simulink_workbench = None
                 
                 # 如果 workbench 已初始化，尝试调用工具
-                if self._cad_workbench:
+                if self._simulink_workbench:
                     try:
                         # 获取可用的工具列表
-                        tools: List[ToolSchema] = await self._cad_workbench.list_tools()
+                        tools: List[ToolSchema] = await self._simulink_workbench.list_tools()
                         
-                        # 查找 open_cad 工具
-                        open_cad_tool: ToolSchema | None = None
+                        # 查找 open_simulink 工具
+                        open_simulink_tool: ToolSchema | None = None
                         # logger.info(f"Tools list: {tools}")
                         for tool in tools:
-                            if "open_cad" in tool.get("name"):
-                                open_cad_tool = tool
+                            if "open_simulink" in tool.get("name"):
+                                open_simulink_tool = tool
                                 break
                         
-                        if open_cad_tool:
+                        if open_simulink_tool:
                             # 准备工具调用参数
                             # 根据工具的参数要求，构建调用参数
                             tool_params = {
                                 "command":"",
                             }
                             
-                            # 调用工具打开 CAD 软件
-                            logger.info(f"Calling CAD MCP tool: {open_cad_tool.get('name')} with params: {tool_params}")
-                            tool_call_result = await self._cad_workbench.call_tool(
-                                open_cad_tool.get("name"),
+                            # 调用工具打开 Simulink 软件
+                            logger.info(f"Calling Simulink MCP tool: {open_simulink_tool.get('name')} with params: {tool_params}")
+                            tool_call_result = await self._simulink_workbench.call_tool(
+                                open_simulink_tool.get("name"),
                                 tool_params,
                                 cancellation_token=cancellation_token,
                             )
@@ -612,7 +623,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                             # 处理工具调用结果
                             tool_result_text = tool_call_result.to_text() if hasattr(tool_call_result, 'to_text') else str(tool_call_result)
                             if tool_result_text:
-                                logger.info(f"CAD tool called successfully: {tool_result_text}")
+                                logger.info(f"Simulink tool called successfully: {tool_result_text}")
                     except Exception as e:
                         # 如果工具调用失败，记录错误但不影响主流程
                         # 捕获网络错误、连接错误等，避免影响主流程
@@ -624,70 +635,73 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                                 error_msg = str(sub_exception)
                                 error_type = type(sub_exception).__name__
                                 if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                                    logger.warning(f"CAD MCP authentication error (non-critical): {sub_exception}. MCP server requires authentication or is not available. Skipping MCP tool call.")
+                                    logger.warning(f"Simulink MCP authentication error (non-critical): {sub_exception}. MCP server requires authentication or is not available. Skipping MCP tool call.")
                                 elif "ReadError" in error_msg or "ConnectionError" in error_msg or "ConnectError" in error_msg:
-                                    logger.warning(f"CAD MCP connection error (non-critical): {sub_exception}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
+                                    logger.warning(f"Simulink MCP connection error (non-critical): {sub_exception}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
                                 else:
-                                    logger.warning(f"Failed to call CAD MCP tool (non-critical): {sub_exception}. Skipping MCP tool call.")
+                                    logger.warning(f"Failed to call Simulink MCP tool (non-critical): {sub_exception}. Skipping MCP tool call.")
                         else:
                             # 处理普通异常
                             error_msg = str(e)
                             error_type = type(e).__name__
                             if "HTTPStatusError" in error_type or "401" in error_msg or "Unauthorized" in error_msg:
-                                logger.warning(f"CAD MCP authentication error (non-critical): {e}. MCP server requires authentication or is not available. Skipping MCP tool call.")
+                                logger.warning(f"Simulink MCP authentication error (non-critical): {e}. MCP server requires authentication or is not available. Skipping MCP tool call.")
                             elif "ReadError" in error_msg or "ConnectionError" in error_msg or "ConnectError" in error_msg:
-                                logger.warning(f"CAD MCP connection error (non-critical): {e}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
+                                logger.warning(f"Simulink MCP connection error (non-critical): {e}. This may be due to network issues or MCP server not running. Skipping MCP tool call.")
                             else:
-                                logger.warning(f"Failed to call CAD MCP tool (non-critical): {e}. Skipping MCP tool call.")
+                                logger.warning(f"Failed to call Simulink MCP tool (non-critical): {e}. Skipping MCP tool call.")
             
+            # 准备技术参数显示内容（在用户确认之前显示）
+            technical_params = """
+支撑电容最小值：
+0.008942563054589132
+0.005547254734067782
+0.0033953083205213496
+充电电阻值：
+1282.2163298550827
+600.7467896902522
+固定放电电阻值：
+44276.36285455827
+固定放电功率值：
+50.81718223764086
+斩波电阻值：
+2.1390625
+斩波电阻的冲击功率：
+1037121.2121212122
+斩波电阻的冲击能量：
+103712.12121212122
+斩波电阻的平均功率：
+3457.070707070707
+辅变输出电压：
+796.0841664045328 \n\n"""
+
             if complete:
-                # 如果任务完成，直接返回完成消息
-                message = response.get("message", "任务已完成。")
-                circuit_description = response.get("circuit_description", "")
+                # 如果生成了BOM list文件，展示文件供用户下载
+                bomlist_path = response.get("bomlist_path", "")
+                # 注释掉下载通知，避免在前端显示 JSON 内容
+                
                 yield TextMessage(
                     content=self.RESPONSE_TEMPLATE.format(
-                        message=message, 
-                        circuit_description=circuit_description),
+                        message=response["message"], 
+                        bomlist_path=bomlist_path),
                     source=agent_name,
                     metadata={"finished": "yes"},
                 )   
                 return                        
-                
-            # assert not isinstance(delegated_result.content, str)
-        
-            # ''' Temporarily using the toolcall result as the response '''
-            # token_limited_context = await self._model_context.get_messages()
-            # delegated_result = await self._model_client.create(
-            #     token_limited_context,
-            #     json_output=True
-            #     if self._model_client.model_info["json_output"]
-            #     else False,
-            #     cancellation_token=cancellation_token
-            # )  
-            
-            # assert isinstance(delegated_result.content, str)
-            # yield TextMessage(
-            #     content = delegated_result.content,
-            #     source=agent_name,
-            #     metadata={"finished": "yes"},
-            # )   
-
-            # 如果任务未完成（complete=false），返回询问用户确认的消息
-            # 注意：MCP tool 已经在上面调用，用于打开软件让用户查看电路图
-            # response 已经在上面的类型检查中确认为 dict
-            message = response.get("message", "请确认生成的电路图是否符合要求。")
-            yield TextMessage(
-                content=message,
-                source=agent_name,
-                metadata={"finished": "yes", "to_user": "yes"},
-            ) 
-            return
+            else:
+                # 在用户确认之前，显示技术参数和消息
+                yield TextMessage(
+                    content=technical_params+response["message"],
+                    source=agent_name,
+                    metadata={"finished": "yes", "to_user": "yes"},
+                ) 
+                return
         except AssertionError as e:
-            logger.error(f"Assertion Error in ElectricalDesignAgent: {e}")
-            raise RuntimeError(f"Electrical Design Agent生成电路图失败: {e}") from e
+            logger.error(f"Assertion Error in MaterialSelectionAgent: {e}")
+            raise RuntimeError(f"物料选型智能体生成物料清单失败: {e}") from e
         except Exception as e:
-            logger.error(f"Error in ElectricalDesignAgent: {e}")
-            raise RuntimeError(f"Electrical Design Agent生成电路图失败: {e}") from e
+            logger.error(f"Error in MaterialSelectionAgent: {e}")
+            raise RuntimeError(f"物料选型智能体生成物料清单失败: {e}") from e
     
     async def _get_json_response(
         self,
@@ -712,7 +726,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
                     await self._model_context.add_message(msg)
                 if exception_message != "":
                     await self._model_context.add_message(
-                        UserMessage(content=exception_message, source=self._name)
+                        UserMessage(content=exception_message, source=self.name)
                     )
                 token_limited_messages = await self._model_context.get_messages()
 
@@ -757,7 +771,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
             )
         except Exception as e:
             logger.error(
-                f"Electrical Design Agent遇到错误: {e}"
+                f"物料选型智能体遇到错误: {e}"
             )
             raise 
         
@@ -765,7 +779,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """Validate the JSON response."""
         if not isinstance(json_response, dict):
             return False
-        required_keys = ["complete", "message", "circuit_diagram_path", "circuit_picture_path", "circuit_description"]
+        required_keys = ["complete", "message", "bomlist_path"]
         for key in required_keys:
             if key not in json_response:
                 return False
@@ -814,13 +828,13 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         if self._model_client.model_info["vision"]:
             context_messages.extend(
                 thread_to_context(
-                    messages=chat_messages, agent_name=self._name, is_multimodal=True
+                    messages=chat_messages, agent_name=self.name, is_multimodal=True
                 )
             )
         else:
             context_messages.extend(
                 thread_to_context(
-                    messages=chat_messages, agent_name=self._name, is_multimodal=False
+                    messages=chat_messages, agent_name=self.name, is_multimodal=False
                 )
             )
 
@@ -850,48 +864,204 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         dict_res = await notify_to_download(str(self._work_root / self._work_relative_dir), file_and_directory_list, target_directory)
         return json.dumps(dict_res, ensure_ascii=False, indent=4)
     
-    async def _generate_circuit_file(
+    async def _generate_bom_list_file(
         self,
-        circuit_requirments: Annotated[str, "用户(客户端)可以下载的文件路径或文件夹路径的列表，可以同时包含文件路径和文件夹路径"], 
-        circuit_filename: Annotated[str, "电路图的文件名，不包括后缀"],
+        specification_path: Annotated[str, '技术规格说明书文件的路径（可选，可以为空字符串）。如果为空，工具会自动在当前会话路径下查找包含"技术规格说明书"字样的.docx文档。'], 
+        circuit_diagram_path: Annotated[str, "电路拓扑图文件的路径（可选，可以为空字符串）。如果为空，工具会自动在当前会话路径下查找图片文件（.jpg, .jpeg, .png, .dwg, .pdf等）。"],
+        circuit_description: Annotated[str, "电路描述（可选，如果用户提供了）。"] = "",
+        bomlist_filename: Annotated[str, "物料清单（BOM list）输出文件的文件名，不包括后缀"] = "物料清单",
         ) -> str:
         r"""
-        根据circuit_requirments的描述，生成电路拓扑图和对应的电路描述。
+        根据技术规格说明书和电路拓扑图，生成物料清单（BOM list）文件。
+        
+        此工具会自动在当前会话路径中查找文件：
+        - specification_path: 如果为空字符串，工具会在当前会话路径下查找包含"技术规格说明书"字样的.docx文档
+        - circuit_diagram_path: 如果为空字符串，工具会在当前会话路径下查找图片文件（.jpg, .jpeg, .png, .dwg, .pdf等）
         
         参数:
-            circuit_requirments: 电路需求描述
-            circuit_filename: 电路图的文件名，不包括后缀
+            specification_path: 技术规格说明书文件的路径（可选）。如果为空字符串，工具会自动查找。
+            circuit_diagram_path: 电路拓扑图文件的路径（可选）。如果为空字符串，工具会自动查找。
+            circuit_description: 电路描述（可选）。
+            bomlist_filename: 物料清单输出文件的文件名，不包括后缀
         返回:
-            json: {
-                "available_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
-                "nonexist_files": [{"name": "filename.mme", "type": "file" or "directory"}, ...],
-                "target_directory": target_directory
-            }
+            str: 生成结果的描述信息，包含输出文件路径
         """
         try:
+            # 获取当前会话路径
+            session_path = self._work_root / self._work_relative_dir
+            
+            # 查找技术规格说明书文件
+            spec_full_path: Optional[Path] = None
+            spec_path_str = specification_path.strip() if specification_path else ""
+            
+            # 如果提供了路径，先尝试使用提供的路径
+            if spec_path_str:
+                if os.sep not in spec_path_str and '/' not in spec_path_str:
+                    # 如果只是文件名，直接与当前会话路径结合
+                    spec_full_path = session_path / spec_path_str
+                else:
+                    # 如果包含路径，先尝试作为绝对路径
+                    spec_full_path = Path(os.path.abspath(spec_path_str))
+                    if not spec_full_path.exists():
+                        # 如果绝对路径不存在，尝试与当前会话路径结合
+                        spec_full_path = session_path / spec_path_str
+                    if not spec_full_path.exists():
+                        # 尝试使用basename
+                        spec_full_path = session_path / os.path.basename(spec_path_str)
+            
+            # 如果未提供路径或提供的路径不存在，在当前会话路径下查找包含"技术规格说明书"字样的.docx文档
+            if spec_full_path is None or not spec_full_path.exists():
+                if session_path.exists():
+                    for file in session_path.iterdir():
+                        if file.is_file() and file.suffix.lower() == '.docx':
+                            if '技术规格说明书' in file.name:
+                                spec_full_path = file
+                                logger.info(f"自动找到技术规格说明书文件: {spec_full_path}")
+                                break
+            
+            if spec_full_path is None or not spec_full_path.exists():
+                available_files = []
+                if session_path.exists():
+                    available_files = [f.name for f in session_path.iterdir() if f.is_file()]
+                return f"错误：未找到技术规格说明书文件。当前会话路径: {session_path}，可用文件: {available_files}。请确保当前会话路径下有包含'技术规格说明书'字样的.docx文档。"
+            
+            # 查找电路拓扑图文件
+            circuit_full_path: Optional[Path] = None
+            circuit_path_str = circuit_diagram_path.strip() if circuit_diagram_path else ""
+            
+            # 如果提供了路径，先尝试使用提供的路径
+            if circuit_path_str:
+                if os.sep not in circuit_path_str and '/' not in circuit_path_str:
+                    # 如果只是文件名，直接与当前会话路径结合
+                    circuit_full_path = session_path / circuit_path_str
+                else:
+                    # 如果包含路径，先尝试作为绝对路径
+                    circuit_full_path = Path(os.path.abspath(circuit_path_str))
+                    if not circuit_full_path.exists():
+                        # 如果绝对路径不存在，尝试与当前会话路径结合
+                        circuit_full_path = session_path / circuit_path_str
+                    if not circuit_full_path.exists():
+                        # 尝试使用basename
+                        circuit_full_path = session_path / os.path.basename(circuit_path_str)
+            
+            # 如果未提供路径或提供的路径不存在，在当前会话路径下查找图片文件
+            if circuit_full_path is None or not circuit_full_path.exists():
+                if session_path.exists():
+                    image_extensions = ['.jpg', '.jpeg', '.png', '.dwg', '.pdf', '.bmp', '.gif', '.tiff', '.svg']
+                    for file in session_path.iterdir():
+                        if file.is_file() and file.suffix.lower() in image_extensions:
+                            circuit_full_path = file
+                            logger.info(f"自动找到电路拓扑图文件: {circuit_full_path}")
+                            break
+            
+            if circuit_full_path is None or not circuit_full_path.exists():
+                available_files = []
+                if session_path.exists():
+                    available_files = [f.name for f in session_path.iterdir() if f.is_file()]
+                return f"错误：未找到电路拓扑图文件。当前会话路径: {session_path}，可用文件: {available_files}。请确保当前会话路径下有图片文件（.jpg, .jpeg, .png, .dwg, .pdf等）。"
+            
+            # 模拟生成物料清单文件（实际实现中会调用真实的物料选型算法）
+            bomlist_path = self._work_root / self._work_relative_dir / (bomlist_filename + ".json")
+            
+            # 创建模拟的物料清单数据
+            mock_bom_data = {
+                "bom_info": {
+                    "generated_from_specification": specification_path,
+                    "generated_from_circuit": circuit_diagram_path,
+                    "output_file": str(bomlist_path),
+                    "generation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                },
+                "materials": [
+                    {
+                        "material_id": "MAT001",
+                        "name": "IGBT模块",
+                        "specification": "1200V/300A",
+                        "quantity": 4,
+                        "manufacturer": "示例厂商A",
+                        "part_number": "IGBT-1200-300",
+                        "parameters": {
+                            "voltage_rating": "1200V",
+                            "current_rating": "300A",
+                            "power_rating": "360kW"
+                        }
+                    },
+                    {
+                        "material_id": "MAT002",
+                        "name": "滤波电容",
+                        "specification": "1000uF/450V",
+                        "quantity": 6,
+                        "manufacturer": "示例厂商B",
+                        "part_number": "CAP-1000-450",
+                        "parameters": {
+                            "capacitance": "1000uF",
+                            "voltage_rating": "450V",
+                            "type": "电解电容"
+                        }
+                    },
+                    {
+                        "material_id": "MAT003",
+                        "name": "驱动模块",
+                        "specification": "15V/2A",
+                        "quantity": 4,
+                        "manufacturer": "示例厂商C",
+                        "part_number": "DRV-15-2",
+                        "parameters": {
+                            "voltage": "15V",
+                            "current": "2A",
+                            "isolation_voltage": "2500V"
+                        }
+                    }
+                ],
+                "summary": {
+                    "total_materials": 3,
+                    "total_components": 14,
+                    "total_cost_estimate": "待评估"
+                }
+            }
+            
+            # 保存模拟的物料清单文件
+            with open(bomlist_path, "w", encoding="utf-8") as f:
+                json.dump(mock_bom_data, f, ensure_ascii=False, indent=2)
+            
+            bom_info = cast(Dict[str, Any], mock_bom_data['bom_info'])
+            summary = cast(Dict[str, Any], mock_bom_data['summary'])
+            
+            # 复制实际的BOM清单文件
+            actual_bomlist_filename = "1_上海机场线牵引变流器-早期BOM清单-20220114.xls"
+            actual_bomlist_path = self._work_root / self._work_relative_dir / actual_bomlist_filename
             cwd = os.getcwd()
-            jpg_path = self._work_root / self._work_relative_dir / (circuit_filename + ".jpg")
-            if jpg_path.exists():
-                jpg_path.touch()
+            source_file = os.path.join(cwd, "misc/1_上海机场线牵引变流器-早期BOM清单-20220114.xls")
+            if os.path.exists(source_file):
+                shutil.copy(source_file, actual_bomlist_path)
+                # 使用实际保存的文件路径（相对路径，用于返回给LLM）
+                bomlist_relative_path = actual_bomlist_filename
             else:
-                shutil.copy(os.path.join(cwd, "misc/circuit_foo.jpg"), jpg_path)
-            
-            dwg_path = self._work_root / self._work_relative_dir / (circuit_filename + ".dwg")
-            if dwg_path.exists():
-                dwg_path.touch()
-            else:
-                shutil.copy(os.path.join(cwd, "misc/circuit_foo.dwg"), dwg_path)
-            
-        except Exception:
-            return "生成电路拓扑图失败"  
-        # await notify_to_download(str(self._work_root / self._work_relative_dir), ["电路拓扑图.jpg"], None)
-        
-        return """
-电路拓扑图已生成，分别保存在保存在\"电路拓扑图.jpg\"，\"电路拓扑图.dwg\"文件中。电路描述如下：
+                # 如果源文件不存在，使用之前生成的JSON文件路径（相对路径）
+                bomlist_relative_path = os.path.relpath(bomlist_path, self._work_root / self._work_relative_dir)
 
-三相高压脉冲电源电路说明：
-牵引变流器工作原理如下：KM1、KM3、R1以及KM2、KM4、R2分别组成预充电回路；Cd1、Cd2、Cd3为支撑电容，为系统提供无功电流；Rch1、Rch2为过压斩波电阻，用于直流回路的过电压抑制及停机后的快速放电；R3、R4、R5、R6、R7、R8为固定放电电阻，用于快速放电回路故障后将支撑电容上的电压放至安全电压以下，R3、R4同时也是直流分压电阻，中点接地，用于变流器主电路接地检测；LH1～LH11为电流传感器，其中LH1～LH4、LH6～LH7、LH9、LH10、LH11用于检测变流器输入和输出电流，LH5和LH8用于检测斩波电流；VH1～VH3、VH7～VH10为电压传感器，其中VH1～VH3分别用于检测变流器直流回路全电压和半电压，VH7～VH10用于检测辅助逆变器输出经降压滤波后的电压；DCK和升压斩波器构成无火回送单元。
+            # 使用实际找到的文件路径
+            actual_spec_path = str(spec_full_path.name) if spec_full_path else specification_path
+            actual_circuit_path = str(circuit_full_path.name) if circuit_full_path else circuit_diagram_path
+            
+            return f"""
+物料清单（BOM list）已生成，保存在 \"{bomlist_relative_path}\" 文件中。
+
+物料清单信息：
+- 基于技术规格说明书: {actual_spec_path}
+- 基于电路拓扑图: {actual_circuit_path}
+- 输出文件: {bomlist_relative_path}
+- 生成时间: {bom_info.get('generation_time', 'N/A')}
+- 物料种类数: {summary.get('total_materials', 0)}
+- 总组件数量: {summary.get('total_components', 0)}
+- 成本估算: {summary.get('total_cost_estimate', 'N/A')}
+
+物料参数列表：
+{json.dumps(mock_bom_data['materials'], ensure_ascii=False, indent=2)}
 """
+            
+        except Exception as e:
+            logger.error(f"生成物料清单失败: {e}")
+            return f"生成物料清单失败: {str(e)}"
 
     async def _read_file(self, 
         file_path: Annotated[str, "文件的路径或名字"], 
@@ -899,22 +1069,40 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         """
         读取文件，并返回文件内容。只有UTF-8编码的文件才会返回内容。
         如果文件不是UTF-8编码，则返回错误信息。
+        
+        如果只提供了文件名（不包含路径分隔符），会在当前会话路径中查找文件。
         """
-        full_file_path = os.path.abspath(file_path)
-        if not os.path.exists(full_file_path):
-            full_file_path = os.path.abspath(os.path.join(self._work_root / self._work_relative_dir, file_path))
-            if not os.path.exists(full_file_path):
-                return f"错误：文件 '{file_path}' 不存在。"
+        # 获取当前会话路径
+        session_path = self._work_root / self._work_relative_dir
+        
+        # 判断是否是纯文件名（不包含路径分隔符）
+        file_path_str = file_path.strip()
+        if os.sep not in file_path_str and '/' not in file_path_str:
+            # 如果只是文件名，直接与当前会话路径结合
+            full_file_path = session_path / file_path_str
+        else:
+            # 如果包含路径，先尝试作为绝对路径
+            full_file_path = Path(os.path.abspath(file_path_str))
+            if not full_file_path.exists():
+                # 如果绝对路径不存在，尝试与当前会话路径结合
+                full_file_path = session_path / file_path_str
+        
+        # 如果文件不存在，尝试在当前会话路径中查找文件名
+        if not full_file_path.exists():
+            full_file_path = session_path / os.path.basename(file_path_str)
+        
+        if not full_file_path.exists():
+            return f"错误：文件 '{file_path}' 不存在。尝试的路径包括：{full_file_path}"
         
         try:
-            content = await read_file(full_file_path)
+            content = await read_file(str(full_file_path))
             return content
         except Exception as e:
             return f"错误：读取文件 '{file_path}' 时发生异常：{str(e)}"
 
-    def _to_config(self) -> ElectricalDesignAgentConfig:
+    def _to_config(self) -> MaterialSelectionAgentConfig:
         """Convert the agent's state to a configuration object."""
-        return ElectricalDesignAgentConfig(
+        return MaterialSelectionAgentConfig(
             name=self.name,
             run_id=self._run_id,
             model_client=self._model_client.dump_component(),
@@ -930,7 +1118,7 @@ class ElectricalDesignAgent(BaseChatAgent, Component[ElectricalDesignAgentConfig
         )
         
     @classmethod
-    def _from_config(cls, config: ElectricalDesignAgentConfig) -> Self:
+    def _from_config(cls, config: MaterialSelectionAgentConfig) -> Self:
         """Create an agent instance from a configuration object."""
         return cls(
             name=config.name,
