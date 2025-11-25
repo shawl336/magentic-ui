@@ -530,11 +530,11 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
                 # is the respone a ToolCallEvent? not JSON
                 if isinstance(response, CreateResult):
                     assert isinstance(response.content, List)
-                    yield ToolCallRequestEvent(content=response.content, source=self._name)
-                    await self._model_context.add_message(AssistantMessage(content=response.content, source=self._name))
+                    yield ToolCallRequestEvent(content=response.content, source=self.name)
+                    await self._model_context.add_message(AssistantMessage(content=response.content, source=self.name))
                     tool_call_results = await asyncio.gather(*[self._execute_tool_call(function_call, cancellation_token) for function_call in response.content])    
                     await self._model_context.add_message(FunctionExecutionResultMessage(content=tool_call_results))
-                    yield ToolCallExecutionEvent(content=tool_call_results, source=self._name, metadata={"internal": "yes"})
+                    yield ToolCallExecutionEvent(content=tool_call_results, source=self.name, metadata={"internal": "yes"})
                 else:
                     break
             
@@ -651,30 +651,34 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
                             else:
                                 logger.warning(f"Failed to call Simulink MCP tool (non-critical): {e}. Skipping MCP tool call.")
             
+            # 准备技术参数显示内容（在用户确认之前显示）
+            technical_params = """
+支撑电容最小值：
+0.008942563054589132
+0.005547254734067782
+0.0033953083205213496
+充电电阻值：
+1282.2163298550827
+600.7467896902522
+固定放电电阻值：
+44276.36285455827
+固定放电功率值：
+50.81718223764086
+斩波电阻值：
+2.1390625
+斩波电阻的冲击功率：
+1037121.2121212122
+斩波电阻的冲击能量：
+103712.12121212122
+斩波电阻的平均功率：
+3457.070707070707
+辅变输出电压：
+796.0841664045328 \n\n"""
+
             if complete:
                 # 如果生成了BOM list文件，展示文件供用户下载
                 bomlist_path = response.get("bomlist_path", "")
-                if bomlist_path:
-                    # 提取文件名（可能是相对路径或绝对路径）
-                    bomlist_filename = os.path.basename(bomlist_path)
-                    # 如果bomlist_path是相对路径，需要相对于工作目录
-                    if not os.path.isabs(bomlist_path):
-                        bomlist_relative_path = bomlist_path
-                    else:
-                        # 如果是绝对路径，计算相对于工作目录的相对路径
-                        try:
-                            bomlist_relative_path = os.path.relpath(bomlist_path, self._work_root / self._work_relative_dir)
-                        except ValueError:
-                            # 如果无法计算相对路径，使用文件名
-                            bomlist_relative_path = bomlist_filename
-                    
-                    # 通知用户下载BOM list文件
-                    download_info = await self.notify_to_download([bomlist_relative_path], None)
-                    yield TextMessage(
-                        content=download_info,
-                        source=agent_name,
-                        metadata={"type": "auto_download_file"},
-                    )
+                # 注释掉下载通知，避免在前端显示 JSON 内容
                 
                 yield TextMessage(
                     content=self.RESPONSE_TEMPLATE.format(
@@ -684,32 +688,14 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
                     metadata={"finished": "yes"},
                 )   
                 return                        
-                
-            # assert not isinstance(delegated_result.content, str)
-        
-            # ''' Temporarily using the toolcall result as the response '''
-            # token_limited_context = await self._model_context.get_messages()
-            # delegated_result = await self._model_client.create(
-            #     token_limited_context,
-            #     json_output=True
-            #     if self._model_client.model_info["json_output"]
-            #     else False,
-            #     cancellation_token=cancellation_token
-            # )  
-            
-            # assert isinstance(delegated_result.content, str)
-            # yield TextMessage(
-            #     content = delegated_result.content,
-            #     source=agent_name,
-            #     metadata={"finished": "yes"},
-            # )   
-            assert isinstance(response, dict)
-            yield TextMessage(
-                content=response["message"],
-                source=agent_name,
-                metadata={"finished": "yes", "to_user": "yes"},
-            ) 
-            return
+            else:
+                # 在用户确认之前，显示技术参数和消息
+                yield TextMessage(
+                    content=technical_params+response["message"],
+                    source=agent_name,
+                    metadata={"finished": "yes", "to_user": "yes"},
+                ) 
+                return
         except AssertionError as e:
             logger.error(f"Assertion Error in MaterialSelectionAgent: {e}")
             raise RuntimeError(f"物料选型智能体生成物料清单失败: {e}") from e
@@ -740,7 +726,7 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
                     await self._model_context.add_message(msg)
                 if exception_message != "":
                     await self._model_context.add_message(
-                        UserMessage(content=exception_message, source=self._name)
+                        UserMessage(content=exception_message, source=self.name)
                     )
                 token_limited_messages = await self._model_context.get_messages()
 
@@ -842,13 +828,13 @@ class MaterialSelectionAgent(BaseChatAgent, Component[MaterialSelectionAgentConf
         if self._model_client.model_info["vision"]:
             context_messages.extend(
                 thread_to_context(
-                    messages=chat_messages, agent_name=self._name, is_multimodal=True
+                    messages=chat_messages, agent_name=self.name, is_multimodal=True
                 )
             )
         else:
             context_messages.extend(
                 thread_to_context(
-                    messages=chat_messages, agent_name=self._name, is_multimodal=False
+                    messages=chat_messages, agent_name=self.name, is_multimodal=False
                 )
             )
 

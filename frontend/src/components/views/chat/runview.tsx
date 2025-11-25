@@ -888,6 +888,7 @@ const RunView: React.FC<RunViewProps> = ({
               run.status === "paused"}
             selectedMcpServers={selectedMcpServers}
             onSelectedMcpServersChange={onSelectedMcpServersChange}
+            runId={run.id}
           />
         </div>
       </div>

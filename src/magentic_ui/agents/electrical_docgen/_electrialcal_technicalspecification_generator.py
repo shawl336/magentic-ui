@@ -374,11 +374,14 @@ class ElectrialcalTechnicalSpecificationGenerator(BaseChatAgent, Component[Elect
             response_content_str = self._clean_response_content(
                 response_content.content
             )
+            # 添加"已完成..."前缀，与其他步骤保持一致
+            completion_message = f"已完成步骤 2：生成技术规格说明书\n\n{response_content_str}"
             # yield response_content
             yield Response(
                 chat_message=TextMessage(
-                    content=response_content_str,
+                    content=completion_message,
                     source=self.name,
+                    metadata={"finished": "yes"},
                 ),
                 inner_messages=[],
             )

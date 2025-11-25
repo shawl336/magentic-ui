@@ -88,6 +88,7 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
         self.is_paused = False
         self._paused = asyncio.Event()
         self._chat_history: List[BaseChatMessage | BaseAgentEvent] = []
+        self._tool_not_found = False  # 标记是否已确认工具不存在，避免重复查找
     
     def _get_creo_mcp_url(self) -> Optional[str]:
         """Get Creo MCP URL, dynamically constructed from client IP if available."""
@@ -206,6 +207,18 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
         self._chat_history.extend(messages)
         inner_messages: List[BaseAgentEvent | BaseChatMessage] = []
 
+        # 如果已经确认工具不存在，直接跳过
+        if self._tool_not_found:
+            yield Response(
+                chat_message=TextMessage(
+                    content="未找到 open_creo 工具，无法打开 Creo 软件。已跳过此步骤，继续执行后续流程。",
+                    source=self.name,
+                    metadata={"finished": "yes"},
+                ),
+                inner_messages=inner_messages,
+            )
+            return
+
         try:
             # 调用 Creo MCP 工具打开用户本地的软件
             if not self._creo_workbench:
@@ -294,6 +307,8 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
                                 inner_messages=inner_messages,
                             )
                     else:
+                        # 标记工具不存在，避免后续重复查找
+                        self._tool_not_found = True
                         logger.warning("open_creo tool not found in MCP workbench")
                         yield Response(
                             chat_message=TextMessage(
@@ -303,6 +318,7 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
                             ),
                             inner_messages=inner_messages,
                         )
+                        return  # 直接返回，不再继续执行
                 except Exception as e:
                     # 处理异常（包括 ExceptionGroup）
                     # 如果工具调用失败，记录错误但不影响主流程
@@ -394,6 +410,8 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
                                 inner_messages=inner_messages,
                             )
             else:
+                # 标记工具不可用，避免后续重复尝试
+                self._tool_not_found = True
                 logger.warning("Creo MCP workbench not initialized. Skipping this step.")
                 yield Response(
                     chat_message=TextMessage(
@@ -403,6 +421,7 @@ class OpenCreoAgent(BaseChatAgent, Component[OpenCreoAgentConfig]):
                     ),
                     inner_messages=inner_messages,
                 )
+                return  # 直接返回，不再继续执行
             
         except asyncio.CancelledError:
             # If the task is cancelled, we respond with a message.

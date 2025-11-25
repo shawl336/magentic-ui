@@ -135,18 +135,18 @@ class ElectricalRequirementValidator(BaseChatAgent):
         """
         For debug only, skip the token-consuming and time-consuming process
         """
-        await asyncio.sleep(2)  # Sleep for 2 seconds
-        
+        await asyncio.sleep(3)  # Sleep for 2 seconds
+
          # 保存文件
         filtered_data = { 
-            "项目名称": "广州地铁5号线牵引变流器项目", 
-            "直流高压等级数值": "DC 1500V", 
+            "项目名称": "上海轨道交通市域线机场联络线牵引变流器项目", 
+            "直流高压等级数值": "DC 1800V", 
             "列车最大运行速度": "160km/h", 
             "列车最大结构速度": "80km/h", 
-            "列车平均初始加速度": "(0—120km/h)≥0.5m/s_2", 
-            "列车平均加速度": "(0—120km/h)≥0.5m/s_2", 
-            "列车平均旅行速度": "100km/h", 
-            "编组规格": "4M2T", 
+            "列车平均初始加速度": "≥0.8m/s2（8 辆编组）、≥1.0m/s2（4 辆编组）", 
+            "列车平均加速度": "≥0.38m/s2（8 辆编组）、≥0.45m/s2（4 辆编组）", 
+            "列车平均旅行速度": "95km/h", 
+            "编组规格": "4动4拖两种编组形式，8编组或者4编组", 
             "重量要求": "全动车牵引变流器最大重量<= 1400KG ，偏差-2% - 0%",
             "complete": True,
             "message": "需求提取已经全部完成",
@@ -202,8 +202,8 @@ class ElectricalRequirementValidator(BaseChatAgent):
         
         try:
             # DEBUG
-            # yield await self.on_messages_stream_foo()
-            # return
+            yield await self.on_messages_stream_foo()
+            return
             
             # get json response result
             self._data_response = await self._get_json_response(
