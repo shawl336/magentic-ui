@@ -121,12 +121,18 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     const [isRecording, setIsRecording] = React.useState(false);
     const [isRecordingModalVisible, setIsRecordingModalVisible] = React.useState(false);
     const [recordingTime, setRecordingTime] = React.useState(0);
-    const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-    const audioChunksRef = React.useRef<Blob[]>([]);
+    const [recognizedText, setRecognizedText] = React.useState(""); // 实时识别结果
+    const recognizedTextRef = React.useRef<string>(""); // 用于在闭包中访问最新的识别结果
     const recordingTimerRef = React.useRef<number | null>(null);
-    const [isConverting, setIsConverting] = React.useState(false);
     const streamRef = React.useRef<MediaStream | null>(null);
     const isCancelledRef = React.useRef<boolean>(false); // 标记是否取消录音
+    const wsRef = React.useRef<WebSocket | null>(null); // WebSocket连接
+    const audioContextRef = React.useRef<AudioContext | null>(null); // AudioContext
+    const processorRef = React.useRef<ScriptProcessorNode | null>(null); // 音频处理器
+    const sourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null); // 音频源
+    const silenceStartTimeRef = React.useRef<number | null>(null); // 静音开始时间
+    const hasReceivedAudioRef = React.useRef<boolean>(false); // 是否已收到音频数据（用于判断是否开始录音）
+    const finalResultReceivedRef = React.useRef<boolean>(false); // 是否已收到最终结果
     
     // Handle textarea auto-resize and scrollbar visibility
     React.useEffect(() => {
@@ -452,96 +458,371 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
       textAreaRef.current?.focus();
     };
 
+    // 将识别结果填入输入框的辅助函数
+    const fillTextToInput = (text: string) => {
+      if (!text || isCancelledRef.current) return;
+      const currentText = textAreaRef.current?.value || '';
+      const newText = currentText ? `${currentText}\n${text}` : text;
+      setText(newText);
+      if (textAreaRef.current) {
+        textAreaRef.current.value = newText;
+      }
+      message.success(`语音转文字成功：${text}`);
+    };
+
     // 清理录音资源（统一清理函数）
-    const cleanupRecording = () => {
+    const cleanupRecording = (closeWebSocket: boolean = true) => {
       setIsRecording(false);
       if (recordingTimerRef.current !== null) {
         window.clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
+      // 重置所有ref
+      silenceStartTimeRef.current = null;
+      hasReceivedAudioRef.current = false;
+      finalResultReceivedRef.current = false;
+      // 清理媒体流
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
+      // 清理AudioContext相关资源
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+        processorRef.current = null;
+      }
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+        sourceRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      // 关闭WebSocket连接
+      if (closeWebSocket && wsRef.current) {
+        try {
+          if (wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.close(1000, "Normal closure");
+          }
+        } catch (e) {
+          console.error("Error closing WebSocket:", e);
+        }
+        wsRef.current = null;
+      }
       setIsRecordingModalVisible(false);
+      setRecognizedText("");
+      recognizedTextRef.current = "";
     };
 
-    // 开始录音（参考demo逻辑：简单直接的录音流程）
+    // 开始录音（实时流式录音，参考demo逻辑）
     const startRecording = async () => {
       try {
+        if (!runId) {
+          message.error("无法获取会话ID，请刷新页面后重试");
+          return;
+        }
+        
         // 请求麦克风权限
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
+        isCancelledRef.current = false;
+        setRecognizedText("");
+        recognizedTextRef.current = ""; // 重置ref
+        finalResultReceivedRef.current = false; // 重置最终结果标记
+        // 重置静音检测
+        silenceStartTimeRef.current = null;
+        hasReceivedAudioRef.current = false; // 重置音频接收标记
         
-        // 创建 MediaRecorder，优先使用opus编码（质量更好）
-        const options: MediaRecorderOptions = {};
-        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-          options.mimeType = 'audio/webm;codecs=opus';
-        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-          options.mimeType = 'audio/webm';
-        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          options.mimeType = 'audio/mp4';
+        // 创建AudioContext（16kHz采样率，参考demo要求）
+        const targetSampleRate = 16000;
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+          sampleRate: targetSampleRate
+        });
+        audioContextRef.current = audioContext;
+        
+        // 创建音频源
+        const source = audioContext.createMediaStreamSource(stream);
+        sourceRef.current = source;
+        
+        // 创建ScriptProcessorNode用于实时处理音频数据
+        // bufferSize: 4096, 输入通道数: 1, 输出通道数: 1
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        
+        // 连接音频处理链
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        // 建立WebSocket连接
+        // WebSocket无法通过Gatsby代理，需要直接连接到后端端口
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+        
+        // 获取后端端口（从环境变量或默认8081）
+        let backendPort = "8081";
+        // 在浏览器环境中，process.env可能不可用，需要从gatsby-config.ts的proxy配置推断
+        // 或者直接使用默认端口8081
+        if (typeof process !== 'undefined' && process.env && process.env.GATSBY_BACKEND_URL) {
+          try {
+            const backendUrl = new URL(process.env.GATSBY_BACKEND_URL);
+            backendPort = backendUrl.port || "8081";
+          } catch (e) {
+            // 如果解析失败，使用默认端口
+          }
         }
         
-        const recorder = new MediaRecorder(stream, Object.keys(options).length > 0 ? options : undefined);
-        mediaRecorderRef.current = recorder;
-        audioChunksRef.current = [];
-        isCancelledRef.current = false;
+        // 始终直接连接到后端端口（WebSocket无法通过Gatsby代理）
+        const wsUrl = `${wsProtocol}//${hostname}:${backendPort}/api/runs/${runId}/speech-to-text-stream`;
         
-        // 收集音频数据
-        recorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
+        console.log("=== WebSocket连接信息 ===");
+        console.log("WebSocket URL:", wsUrl);
+        console.log("后端端口:", backendPort);
+        console.log("Run ID:", runId);
+        console.log("当前页面URL:", window.location.href);
+        console.log("========================");
+        
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        
+        // 音频处理相关变量
+        let frameBuffer: Int16Array[] = [];
+        const frameSize = 1280; // 每帧1280字节（参考demo）
+        let wsReady = false; // WebSocket是否已准备好接收数据
+        
+        // WebSocket连接成功
+        ws.onopen = () => {
+          console.log("✓ WebSocket连接已建立");
+          console.log("  URL:", wsUrl);
+          console.log("  后端端口:", backendPort);
+          console.log("  Run ID:", runId);
+          setIsRecording(true);
+          setIsRecordingModalVisible(true);
+          setRecordingTime(0);
+          wsReady = true; // 标记WebSocket已准备好
+          console.log("[前端] WebSocket已准备好，开始接收音频数据");
+          
+          // 开始计时（最多60秒）
+          const MAX_RECORDING_TIME = 60;
+          recordingTimerRef.current = window.setInterval(() => {
+            setRecordingTime(prev => {
+              const newTime = prev + 1;
+              if (newTime >= MAX_RECORDING_TIME) {
+                stopRecording();
+                message.warning(`录音时长已达上限（${MAX_RECORDING_TIME}秒），已自动停止`);
+              }
+              return newTime;
+            });
+          }, 1000);
+        };
+        
+        // 接收识别结果
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === "partial_result") {
+              // 实时更新识别结果
+              const text = data.text || "";
+              setRecognizedText(text);
+              recognizedTextRef.current = text;
+            } else if (data.type === "final_result") {
+              // 最终识别结果
+              const finalText = data.text || "";
+              recognizedTextRef.current = finalText;
+              finalResultReceivedRef.current = true;
+              if (finalText) {
+                fillTextToInput(finalText);
+              } else {
+                message.warning("识别结果为空");
+              }
+              cleanupRecording(false);
+            } else if (data.type === "error") {
+              message.error(data.message || "语音识别失败");
+              cleanupRecording();
+            }
+          } catch (e) {
+            console.error("解析WebSocket消息失败:", e);
           }
         };
         
-        // 录音停止时的处理
-        recorder.onstop = () => {
-          // 停止媒体流
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
+        ws.onerror = () => {
+          // 错误由onclose统一处理
+        };
+        
+        ws.onclose = (event) => {
+          // 如果已经收到最终结果，直接清理资源
+          if (finalResultReceivedRef.current) {
+            cleanupRecording(false);
+            return;
           }
           
-          // 如果未取消，处理录音完成
-          if (!isCancelledRef.current) {
-            handleRecordingComplete();
+          const isNormalClose = event.code === 1000 || event.code === 1001;
+          
+          if (isNormalClose) {
+            // 正常关闭，等待最终结果（onclose可能在onmessage之前触发）
+            let checkCount = 0;
+            const maxChecks = 10;
+            const checkInterval = 100;
+            
+            const checkForResult = () => {
+              checkCount++;
+              const hasResult = finalResultReceivedRef.current || recognizedTextRef.current.length > 0;
+              
+              if (hasResult) {
+                const finalText = recognizedTextRef.current;
+                if (finalText) {
+                  fillTextToInput(finalText);
+                }
+                cleanupRecording(false);
+              } else if (checkCount < maxChecks) {
+                setTimeout(checkForResult, checkInterval);
+              } else {
+                // 超时，尝试使用部分识别结果
+                const partialText = recognizedTextRef.current;
+                if (partialText) {
+                  fillTextToInput(partialText);
+                }
+                cleanupRecording(false);
+              }
+            };
+            
+            setTimeout(checkForResult, 50);
           } else {
-            // 取消时清理状态
-            setIsRecordingModalVisible(false);
-            audioChunksRef.current = [];
-            setRecordingTime(0);
+            // 非正常关闭，立即清理资源
+            cleanupRecording(false);
+          }
+          
+          // 显示错误（仅在非正常关闭且未收到结果时）
+          const hasResult = finalResultReceivedRef.current || recognizedTextRef.current.length > 0;
+          if (!isNormalClose && !isCancelledRef.current && !hasResult) {
+            let errorMsg = "语音识别服务连接失败";
+            if (event.code === 1006) {
+              errorMsg = "无法连接到语音识别服务，请检查后端服务是否运行";
+            } else if (event.code === 1008) {
+              errorMsg = `连接被拒绝: ${event.reason || "未知原因"}`;
+            } else if (event.code === 1005 && !hasResult) {
+              errorMsg = "连接已关闭，请重试";
+            } else if (event.code !== 1005) {
+              errorMsg = `连接失败 (错误码: ${event.code}${event.reason ? `, 原因: ${event.reason}` : ''})`;
+            }
+            if (errorMsg) {
+              message.error(errorMsg);
+            }
           }
         };
         
-        // 错误处理
-        recorder.onerror = (event: any) => {
-          console.error("MediaRecorder error:", event);
-          message.error("录音过程中发生错误");
-          cleanupRecording();
-        };
+        // 处理音频数据（实时转换为PCM并发送）
+        let frameSendCount = 0; // 记录发送的帧数
+        const SILENCE_THRESHOLD = 0.01; // 静音阈值（可根据实际情况调整）
+        const SILENCE_DURATION = 3000; // 静音持续时间（毫秒），超过此时间自动停止
         
-        // 开始录音（每1秒收集一次数据）
-        recorder.start(1000);
-        
-        // 更新状态
-        setIsRecording(true);
-        setIsRecordingModalVisible(true);
-        setRecordingTime(0);
-        
-        // 开始计时（最多60秒）
-        const MAX_RECORDING_TIME = 60;
-        recordingTimerRef.current = window.setInterval(() => {
-          setRecordingTime(prev => {
-            const newTime = prev + 1;
-            // 达到最大时长自动停止
-            if (newTime >= MAX_RECORDING_TIME) {
+        processor.onaudioprocess = (e) => {
+          // 只有在WebSocket已准备好且未取消时才处理
+          if (!wsReady || !ws || ws.readyState !== WebSocket.OPEN || isCancelledRef.current) {
+            return;
+          }
+          
+          // 获取音频数据（Float32Array，范围-1到1）
+          const inputData = e.inputBuffer.getChannelData(0);
+          
+          // 计算音频能量（RMS - Root Mean Square）
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sum / inputData.length);
+          const volume = rms; // 音量值（0-1之间）
+          
+          // 检测是否有声音（用于判断是否开始录音）
+          if (volume >= SILENCE_THRESHOLD) {
+            hasReceivedAudioRef.current = true;
+          }
+          
+          // 只有在已经收到音频数据后才进行静音检测
+          if (!hasReceivedAudioRef.current) {
+            return;
+          }
+          
+          // 检测静音
+          const isSilent = volume < SILENCE_THRESHOLD;
+          const now = Date.now();
+          
+          if (isSilent) {
+            // 检测到静音，开始或继续计时
+            if (silenceStartTimeRef.current === null) {
+              silenceStartTimeRef.current = now;
+            } else if (now - silenceStartTimeRef.current >= SILENCE_DURATION) {
+              // 静音超过3秒，自动停止录音
+              silenceStartTimeRef.current = null;
               stopRecording();
-              message.warning(`录音时长已达上限（${MAX_RECORDING_TIME}秒），已自动停止`);
+              return;
             }
-            return newTime;
-          });
-        }, 1000);
+          } else {
+            // 检测到有声音，重置静音计时
+            silenceStartTimeRef.current = null;
+          }
+          
+          // 转换为16-bit PCM（Int16Array）
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          
+          // 将PCM数据添加到缓冲区
+          frameBuffer.push(pcmData);
+          
+          // 计算缓冲区总字节数（每个样本2字节）
+          let totalBytes = 0;
+          for (const frame of frameBuffer) {
+            totalBytes += frame.length * 2;
+          }
+          
+          // 当缓冲区达到或超过一帧大小时发送
+          while (totalBytes >= frameSize) {
+            // 合并缓冲区中的数据，取正好一帧的大小
+            const samplesPerFrame = frameSize / 2; // 每帧的样本数
+            const combined = new Int16Array(samplesPerFrame);
+            let offset = 0;
+            let remainingSamples = samplesPerFrame;
+            
+            // 从缓冲区中提取一帧的数据
+            const newBuffer: Int16Array[] = [];
+            for (let i = 0; i < frameBuffer.length && remainingSamples > 0; i++) {
+              const frame = frameBuffer[i];
+              const takeSamples = Math.min(remainingSamples, frame.length);
+              
+              combined.set(frame.subarray(0, takeSamples), offset);
+              offset += takeSamples;
+              remainingSamples -= takeSamples;
+              
+              // 如果还有剩余数据，保留在缓冲区
+              if (takeSamples < frame.length) {
+                newBuffer.push(frame.subarray(takeSamples));
+              }
+            }
+            
+            // 更新缓冲区
+            frameBuffer = newBuffer;
+            totalBytes -= frameSize;
+            
+            // 发送一帧数据（正好1280字节）
+            const frameToSend = new Uint8Array(combined.buffer);
+            
+            try {
+              frameSendCount++;
+              if (frameSendCount === 1 || frameSendCount % 50 === 0) {
+                console.log(`[前端] 发送第 ${frameSendCount} 帧音频数据 (${frameToSend.length} 字节)`);
+              }
+              ws.send(frameToSend);
+            } catch (err) {
+              console.error("发送音频数据失败:", err);
+              return; // 发送失败时停止处理
+            }
+          }
+        };
         
       } catch (error) {
         console.error("Error starting recording:", error);
@@ -552,11 +833,7 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
     
     // 停止录音
     const stopRecording = () => {
-      if (!mediaRecorderRef.current || !isRecording) {
-        return;
-      }
-      
-      if (mediaRecorderRef.current.state === 'inactive') {
+      if (!isRecording) {
         return;
       }
       
@@ -569,188 +846,77 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
         recordingTimerRef.current = null;
       }
       
-      // 停止录音（会在onstop回调中处理）
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (error) {
-        console.error("Error stopping recorder:", error);
+      // 重置静音检测
+      silenceStartTimeRef.current = null;
+      hasReceivedAudioRef.current = false;
+      finalResultReceivedRef.current = false;
+      
+      // 停止音频处理（防止继续发送数据）
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+        processorRef.current = null;
+      }
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+        sourceRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // 发送停止信号到WebSocket
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: "stop" }));
+        } catch (error) {
+          console.error("发送停止信号失败:", error);
+          cleanupRecording();
+        }
+      } else {
         cleanupRecording();
       }
     };
     
     // 取消录音
     const cancelRecording = () => {
-      if (!mediaRecorderRef.current || !isRecording) {
+      if (!isRecording) {
         return;
       }
       
       setIsRecording(false);
       isCancelledRef.current = true;
       
-      // 清除计时器和数据
+      // 清除计时器
       if (recordingTimerRef.current !== null) {
         window.clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
-      audioChunksRef.current = [];
       
-      // 停止录音
-      if (mediaRecorderRef.current.state !== 'inactive') {
+      // 发送取消信号到WebSocket
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         try {
-          mediaRecorderRef.current.stop();
+          wsRef.current.send(JSON.stringify({ type: "cancel" }));
         } catch (error) {
-          console.error("Error stopping recorder:", error);
+          console.error("Error sending cancel signal:", error);
         }
       }
       
       // 清理资源
       cleanupRecording();
       setRecordingTime(0);
-      setIsConverting(false);
+      setRecognizedText("");
+      recognizedTextRef.current = ""; // 重置ref
+      finalResultReceivedRef.current = false; // 重置最终结果标记
+      hasReceivedAudioRef.current = false; // 重置音频接收标记
     };
     
-    // 处理录音完成（参考demo逻辑：录音 -> 转换 -> 发送）
-    const handleRecordingComplete = async () => {
-      // 如果已取消，不处理
-      if (isCancelledRef.current) {
-        return;
-      }
-      
-      // 检查录音数据
-      if (audioChunksRef.current.length === 0) {
-        message.warning("录音数据为空，请重新录音");
-        setIsRecordingModalVisible(false);
-        return;
-      }
-      
-      if (!runId) {
-        message.error("无法获取会话ID，请刷新页面后重试");
-        setIsRecordingModalVisible(false);
-        return;
-      }
-      
-      try {
-        setIsConverting(true);
-        
-        // 合并音频数据
-        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        
-        // 转换为PCM格式（16kHz，参考demo要求）
-        const pcmBlob = await convertWebmToPcm(audioBlob);
-        
-        // 创建FormData并发送到后端
-        const formData = new FormData();
-        const audioFile = new File([pcmBlob], `recording_${Date.now()}.pcm`, {
-          type: 'audio/pcm'
-        });
-        formData.append('audio_file', audioFile);
-        
-        // 调用后端API
-        const serverUrl = getServerUrl();
-        const response = await fetch(`${serverUrl}/runs/${runId}/speech-to-text`, {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const errorMsg = errorData.detail || errorData.message || `HTTP ${response.status}: 语音转文字失败`;
-          throw new Error(errorMsg);
-        }
-        
-        const result = await response.json();
-        
-        if (result.status && result.text) {
-          // 检查识别结果是否为空
-          const recognizedText = result.text.trim();
-          if (!recognizedText) {
-            throw new Error('识别结果为空，请重新录音');
-          }
-          
-          // 将转换后的文字填入输入框
-          const currentText = textAreaRef.current?.value || '';
-          const newText = currentText ? `${currentText}\n${recognizedText}` : recognizedText;
-          setText(newText);
-          if (textAreaRef.current) {
-            textAreaRef.current.value = newText;
-          }
-          message.success(`语音转文字成功：${recognizedText}`);
-        } else {
-          throw new Error(result.message || '语音转文字失败：未返回识别结果');
-        }
-        
-      } catch (error: any) {
-        console.error("Error converting speech to text:", error);
-        const errorMsg = error.message || "语音转文字失败，请重试";
-        message.error(errorMsg);
-      } finally {
-        setIsConverting(false);
-        setIsRecordingModalVisible(false);
-        audioChunksRef.current = [];
-        setRecordingTime(0);
-      }
-    };
-    
-    // 将 WebM 转换为 PCM 格式（参考demo要求：16kHz采样率，raw编码）
-    const convertWebmToPcm = async (webmBlob: Blob): Promise<Blob> => {
-      try {
-        const arrayBuffer = await webmBlob.arrayBuffer();
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        
-        // 目标采样率：16kHz（demo要求）
-        const targetSampleRate = 16000;
-        const originalSampleRate = audioBuffer.sampleRate;
-        const numberOfChannels = audioBuffer.numberOfChannels;
-        const duration = audioBuffer.duration;
-        
-        // 检查音频时长（至少0.5秒，最多60秒）
-        if (duration < 0.5) {
-          throw new Error("录音时长太短，请至少录制0.5秒");
-        }
-        if (duration > 60) {
-          throw new Error("录音时长过长，请控制在60秒以内");
-        }
-        
-        let pcmData: Float32Array;
-        
-        // 如果采样率已经是16kHz，直接使用
-        if (originalSampleRate === targetSampleRate) {
-          pcmData = audioBuffer.getChannelData(0);
-        } else {
-          // 使用OfflineAudioContext进行高质量重采样
-          const offlineContext = new OfflineAudioContext(
-            1, // 单声道
-            Math.floor(audioBuffer.length * targetSampleRate / originalSampleRate),
-            targetSampleRate
-          );
-          
-          const source = offlineContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(offlineContext.destination);
-          source.start(0);
-          
-          const resampledBuffer = await offlineContext.startRendering();
-          pcmData = resampledBuffer.getChannelData(0);
-        }
-        
-        // 转换为16-bit PCM
-        const pcm16 = new Int16Array(pcmData.length);
-        for (let i = 0; i < pcmData.length; i++) {
-          const s = Math.max(-1, Math.min(1, pcmData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        
-        return new Blob([pcm16.buffer], { type: 'audio/pcm' });
-      } catch (error: any) {
-        console.error("Error converting to PCM:", error);
-        if (error.message && (error.message.includes("太短") || error.message.includes("过长"))) {
-          throw error;
-        }
-        throw new Error("音频格式转换失败，请重试");
-      }
-    };
+    // 注意：convertWebmToPcm 和 handleRecordingComplete 函数已不再需要
+    // 因为现在使用实时流式识别，直接通过AudioContext获取PCM数据并发送
     
     // 格式化录音时间
     const formatRecordingTime = (seconds: number): string => {
@@ -1083,7 +1249,7 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
 
         {/* 录音弹窗 */}
         <Modal
-          title={isRecording ? t("正在录音") : isConverting ? t("正在转换") : t("录音")}
+          title={isRecording ? t("正在录音") : t("录音")}
           open={isRecordingModalVisible}
           onCancel={isRecording ? cancelRecording : undefined}
           footer={isRecording ? [
@@ -1100,7 +1266,7 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
               {t("停止录音")}
             </Button>,
           ] : null}
-          closable={!isRecording && !isConverting}
+          closable={!isRecording}
           maskClosable={false}
         >
           <div className="flex flex-col items-center justify-center py-8">
@@ -1112,21 +1278,19 @@ const ChatInput = React.forwardRef<{ focus: () => void }, ChatInputProps>(
                 <div className="text-2xl font-bold mb-2">
                   {formatRecordingTime(recordingTime)}
                 </div>
-                <div className="text-gray-500 text-sm">
+                <div className="text-gray-500 text-sm mb-4">
                   {t("正在录音中，请说话...")}
                 </div>
-              </>
-            ) : isConverting ? (
-              <>
-                <div className="mb-4">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-                </div>
-                <div className="text-lg font-semibold mb-2">
-                  {t("正在转换语音为文字...")}
-                </div>
-                <div className="text-gray-500 text-sm">
-                  {t("请稍候")}
-                </div>
+                {recognizedText && (
+                  <div className="w-full max-w-md mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                      {t("实时识别结果：")}
+                    </div>
+                    <div className="text-base text-gray-800 dark:text-gray-200">
+                      {recognizedText}
+                    </div>
+                  </div>
+                )}
               </>
             ) : null}
           </div>
