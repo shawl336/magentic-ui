@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from time import mktime
 from wsgiref.handlers import format_date_time
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from loguru import logger
@@ -919,3 +919,402 @@ async def speech_to_text(
             status_code=500,
             detail=f"Failed to convert speech to text: {str(e)}"
         )
+
+
+@router.websocket("/{run_id}/speech-to-text-stream")
+async def speech_to_text_stream(
+    websocket: WebSocket,
+    run_id: int,
+    db=Depends(get_db),
+    ws_manager=Depends(get_websocket_manager),
+):
+    """实时流式语音转文字WebSocket端点"""
+    logger.info(f"[语音转文字流式] ========== 收到WebSocket连接请求 ==========")
+    logger.info(f"[语音转文字流式] run_id: {run_id}")
+    logger.info(f"[语音转文字流式] 客户端地址: {websocket.client}")
+    try:
+        logger.info(f"[语音转文字流式] URL路径: {websocket.url.path}")
+        logger.info(f"[语音转文字流式] URL查询参数: {websocket.url.query_string}")
+        logger.info(f"[语音转文字流式] URL完整: {websocket.url}")
+    except Exception as e:
+        logger.warning(f"[语音转文字流式] 无法获取URL信息: {e}")
+    
+    try:
+        await websocket.accept()
+        logger.info(f"[语音转文字流式] ✓ WebSocket连接已接受")
+    except Exception as e:
+        logger.error(f"[语音转文字流式] ✗ WebSocket接受连接失败: {e}")
+        import traceback
+        logger.error(f"[语音转文字流式] 错误堆栈:\n{traceback.format_exc()}")
+        try:
+            await websocket.close(code=1008, reason=f"Failed to accept connection: {str(e)}")
+        except:
+            pass
+        return
+    
+    import asyncio
+    
+    try:
+        # 验证run是否存在
+        logger.info(f"[语音转文字流式] 步骤1: 验证run是否存在...")
+        run_response = db.get(Run, filters={"id": run_id}, return_json=False)
+        if not run_response.status or not run_response.data:
+            logger.error(f"[语音转文字流式] 步骤1: ✗ Run {run_id} not found")
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Run {run_id} not found"
+                })
+                await websocket.close(code=1008, reason="Run not found")
+            except:
+                pass
+            return
+        
+        logger.info(f"[语音转文字流式] 步骤1: ✓ Run {run_id} 验证成功")
+        
+        # 获取环境变量中的API配置
+        iat_app_id = os.getenv("IAT_APP_ID", "").strip()
+        rtasr_app_id = os.getenv("RTASR_APP_ID", "").strip()
+        app_id = iat_app_id or rtasr_app_id
+        
+        iat_api_key = os.getenv("IAT_API_KEY", "").strip()
+        rtasr_api_key = os.getenv("RTASR_API_KEY", "").strip()
+        api_key = iat_api_key or rtasr_api_key
+        
+        iat_api_secret = os.getenv("IAT_API_SECRET", "").strip()
+        rtasr_api_secret = os.getenv("RTASR_API_SECRET", "").strip()
+        api_secret = iat_api_secret or rtasr_api_secret
+        
+        if not app_id or not api_key or not api_secret:
+            error_msg = "语音转文字功能需要配置IAT API环境变量"
+            logger.error(f"[语音转文字流式] ✗ {error_msg}")
+            await websocket.send_json({
+                "type": "error",
+                "message": error_msg
+            })
+            await websocket.close()
+            return
+        
+        # 创建IAT客户端
+        client = SpeechToTextClient(app_id=app_id, api_key=api_key, api_secret=api_secret)
+        logger.info(f"[语音转文字流式] ✓ SpeechToTextClient 创建成功")
+        
+        # 存储识别结果和WebSocket连接
+        final_result = [""]
+        result_lock = threading.Lock()
+        error_occurred = threading.Event()
+        error_message = [None]
+        ws_connected = [False]
+        recognition_complete = threading.Event()
+        iat_ws = [None]  # 存储IAT WebSocket连接
+        frontend_ws = websocket  # 前端WebSocket连接
+        frontend_loop = asyncio.get_event_loop()  # 前端WebSocket的事件循环
+        
+        def on_message(ws, message):
+            """收到IAT API消息的处理"""
+            try:
+                message_dict = json.loads(message)
+                code = message_dict.get("header", {}).get("code", -1)
+                status = message_dict.get("header", {}).get("status", -1)
+                
+                if code != 0:
+                    error_msg = f"请求错误：{code}"
+                    logger.error(f"[语音转文字流式] [IAT消息] ✗ {error_msg}")
+                    error_message[0] = error_msg
+                    error_occurred.set()
+                    ws.close()
+                    return
+                
+                # 处理payload中的识别结果
+                payload = message_dict.get("payload")
+                if payload:
+                    result = payload.get("result", {})
+                    text = result.get("text", "")
+                    
+                    if text:
+                        try:
+                            text_decoded_bytes = base64.b64decode(text)
+                            text_decoded_str = str(text_decoded_bytes, "utf8")
+                            text_decoded = json.loads(text_decoded_str)
+                            text_ws = text_decoded.get('ws', [])
+                            
+                            result_text = ''.join(j.get("w", "") for i in text_ws for j in i.get("cw", []))
+                            
+                            if result_text:
+                                with result_lock:
+                                    current_result = final_result[0]
+                                    # 更新策略：如果新结果更长，或者当前结果为空但新结果非空
+                                    if len(result_text) > len(current_result) or (not current_result and result_text):
+                                        final_result[0] = result_text
+                                        logger.info(f"[语音转文字流式] [IAT消息] ✓ 更新识别结果: '{result_text}'")
+                                        # 发送部分结果到前端
+                                        try:
+                                            asyncio.run_coroutine_threadsafe(
+                                                frontend_ws.send_json({
+                                                    "type": "partial_result",
+                                                    "text": result_text
+                                                }),
+                                                frontend_loop
+                                            )
+                                        except Exception as e:
+                                            logger.warning(f"[语音转文字流式] 发送部分结果失败: {e}")
+                        except Exception as e:
+                            logger.warning(f"[语音转文字流式] 解析结果失败: {e}")
+                
+                # 识别完成
+                if status == 2:
+                    with result_lock:
+                        current_final = final_result[0]
+                    logger.info(f"[语音转文字流式] [IAT消息] ✓ 识别完成: '{current_final}'")
+                    recognition_complete.set()
+                    time.sleep(0.1)
+                    try:
+                        ws.close()
+                    except:
+                        pass
+                    
+            except Exception as e:
+                logger.error(f"[语音转文字流式] [IAT消息] ✗ 处理错误: {e}")
+                error_message[0] = str(e)
+                error_occurred.set()
+        
+        def on_error(ws, error):
+            logger.error(f"[语音转文字流式] [IAT错误] ✗ {error}")
+            error_message[0] = str(error)
+            error_occurred.set()
+        
+        def on_close(ws, close_status_code, close_msg):
+            logger.info(f"[语音转文字流式] [IAT关闭] ✓ WebSocket连接已关闭")
+            ws_connected[0] = False
+        
+        def on_open(ws):
+            logger.info(f"[语音转文字流式] [IAT连接] ✓ WebSocket连接已建立")
+            ws_connected[0] = True
+            iat_ws[0] = ws
+        
+        # 创建IAT WebSocket连接
+        ws_url = client.create_url()
+        import websocket as ws_client
+        import ssl
+        ws_client.enableTrace(False)
+        iat_ws_app = ws_client.WebSocketApp(
+            ws_url,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+        iat_ws_app.on_open = on_open
+        
+        # 在后台线程运行IAT WebSocket
+        def run_iat_ws():
+            iat_ws_app.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+        
+        iat_thread = threading.Thread(target=run_iat_ws, daemon=True)
+        iat_thread.start()
+        
+        # 等待IAT连接建立
+        timeout = 5
+        elapsed = 0
+        while not ws_connected[0] and elapsed < timeout:
+            await asyncio.sleep(0.1)
+            elapsed += 0.1
+        
+        if not ws_connected[0]:
+            await websocket.send_json({
+                "type": "error",
+                "message": "无法连接到IAT服务"
+            })
+            await websocket.close()
+            return
+        
+        # 发送连接成功消息
+        await websocket.send_json({
+            "type": "connected",
+            "message": "语音识别服务已连接，可以开始发送音频数据"
+        })
+        
+        # 状态标识
+        STATUS_FIRST_FRAME = 0
+        STATUS_CONTINUE_FRAME = 1
+        STATUS_LAST_FRAME = 2
+        status = STATUS_FIRST_FRAME
+        frame_count = 0  # 记录发送的音频帧数
+        
+        # 接收前端发送的音频数据
+        try:
+            while True:
+                # 接收消息
+                data = await websocket.receive()
+                
+                if "bytes" in data:
+                    # 接收二进制音频数据（PCM格式，每帧1280字节）
+                    audio_data = data["bytes"]
+                    
+                    if len(audio_data) == 0:
+                        # 空数据不应该出现，但为了安全起见处理一下
+                        logger.warning(f"[语音转文字流式] 收到空音频数据")
+                        continue
+                    
+                    # 验证音频数据大小（应该是1280字节）
+                    if len(audio_data) != 1280:
+                        logger.debug(f"[语音转文字流式] 收到非标准帧大小: {len(audio_data)} 字节")
+                    
+                    # 发送音频帧
+                    audio_base64 = str(base64.b64encode(audio_data), 'utf-8')
+                    
+                    if status == STATUS_FIRST_FRAME:
+                        frame_count += 1
+                        logger.debug(f"[语音转文字流式] 发送第1帧音频数据 (大小: {len(audio_data)} 字节)")
+                        d = {
+                            "header": {
+                                "status": 0,
+                                "app_id": app_id
+                            },
+                            "parameter": {
+                                "iat": client.iat_params
+                            },
+                            "payload": {
+                                "audio": {
+                                    "audio": audio_base64,
+                                    "sample_rate": 16000,
+                                    "encoding": "raw"
+                                }
+                            }
+                        }
+                        if iat_ws[0]:
+                            iat_ws[0].send(json.dumps(d))
+                        status = STATUS_CONTINUE_FRAME
+                    
+                    elif status == STATUS_CONTINUE_FRAME:
+                        frame_count += 1
+                        if frame_count % 50 == 0:  # 每50帧记录一次日志
+                            logger.debug(f"[语音转文字流式] 已发送 {frame_count} 帧音频数据")
+                        d = {
+                            "header": {
+                                "status": 1,
+                                "app_id": app_id
+                            },
+                            "parameter": {
+                                "iat": client.iat_params
+                            },
+                            "payload": {
+                                "audio": {
+                                    "audio": audio_base64,
+                                    "sample_rate": 16000,
+                                    "encoding": "raw"
+                                }
+                            }
+                        }
+                        if iat_ws[0]:
+                            iat_ws[0].send(json.dumps(d))
+                
+                elif "text" in data:
+                    # 接收文本消息（控制消息）
+                    message = json.loads(data["text"])
+                    msg_type = message.get("type")
+                    
+                    if msg_type == "stop":
+                        # 停止录音
+                        logger.info(f"[语音转文字流式] 收到停止消息，已发送 {frame_count} 帧音频数据")
+                        if status != STATUS_LAST_FRAME:
+                            status = STATUS_LAST_FRAME
+                            audio_base64 = str(base64.b64encode(b''), 'utf-8')
+                            d = {
+                                "header": {
+                                    "status": 2,
+                                    "app_id": app_id
+                                },
+                                "parameter": {
+                                    "iat": client.iat_params
+                                },
+                                "payload": {
+                                    "audio": {
+                                        "audio": audio_base64,
+                                        "sample_rate": 16000,
+                                        "encoding": "raw"
+                                    }
+                                }
+                            }
+                            if iat_ws[0]:
+                                logger.debug(f"[语音转文字流式] 发送最后一帧（空数据）")
+                                iat_ws[0].send(json.dumps(d))
+                        break
+                    
+                    elif msg_type == "cancel":
+                        # 取消录音
+                        if iat_ws[0]:
+                            try:
+                                iat_ws[0].close()
+                            except:
+                                pass
+                        break
+        
+        except WebSocketDisconnect:
+            logger.info(f"[语音转文字流式] 客户端断开连接")
+            # 客户端已断开，尝试发送最终结果（如果连接仍然可用）
+            # 不直接return，让finally块处理
+        except Exception as e:
+            logger.error(f"[语音转文字流式] 处理错误: {e}")
+            import traceback
+            logger.error(f"[语音转文字流式] 错误堆栈:\n{traceback.format_exc()}")
+            # 不在这里发送错误消息，让finally块统一处理
+        finally:
+            # 等待识别完成或超时
+            timeout = 10
+            elapsed = 0
+            while not recognition_complete.is_set() and not error_occurred.is_set() and elapsed < timeout:
+                await asyncio.sleep(0.1)
+                elapsed += 0.1
+            
+            # 获取最终结果
+            with result_lock:
+                full_text = final_result[0]
+            
+            logger.info(f"[语音转文字流式] 准备发送最终结果: '{full_text}'")
+            
+            # 尝试发送最终结果
+            try:
+                if error_occurred.is_set():
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": error_message[0] or "识别服务返回错误"
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "final_result",
+                        "text": full_text
+                    })
+                    logger.info(f"[语音转文字流式] ✓ 最终结果已发送")
+                    await asyncio.sleep(0.1)  # 确保消息已发送
+            except Exception as e:
+                logger.error(f"[语音转文字流式] ✗ 发送最终结果失败: {e}")
+            
+            # 关闭IAT连接
+            if iat_ws[0]:
+                try:
+                    iat_ws[0].close()
+                except:
+                    pass
+            
+            # 等待一小段时间确保消息已发送，然后正常关闭连接
+            await asyncio.sleep(0.5)  # 增加等待时间，确保前端已收到消息
+            try:
+                await websocket.close(code=1000, reason="Recognition completed")
+                logger.info(f"[语音转文字流式] ========== WebSocket连接已关闭 ==========")
+            except Exception as e:
+                logger.debug(f"[语音转文字流式] 关闭WebSocket连接时出错（可能已关闭）: {e}")
+    
+    except Exception as e:
+        logger.error(f"[语音转文字流式] ========== 处理失败 ==========")
+        logger.error(f"[语音转文字流式] 错误类型: {type(e).__name__}")
+        logger.error(f"[语音转文字流式] 错误消息: {str(e)}")
+        import traceback
+        logger.error(f"[语音转文字流式] 错误堆栈:\n{traceback.format_exc()}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+            await websocket.close()
+        except:
+            pass

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
 
 # import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -448,6 +448,24 @@ async def serve_document_for_onlyoffice(file_path: str, request: Request):
         logger.error(f"Error serving document {file_path}: {str(e)}")
         return {"error": f"Failed to serve document: {str(e)}"}
 
+
+# 将WebSocket端点直接注册到主app（确保WebSocket能正常工作）
+# 因为FastAPI的mount可能对WebSocket有特殊处理要求
+from .routes.runs import speech_to_text_stream
+from .deps import get_db, get_websocket_manager
+from fastapi import Depends
+
+# 直接注册WebSocket端点，使用Depends处理依赖
+# 必须在mount之前注册，否则可能无法正常工作
+@app.websocket("/api/runs/{run_id}/speech-to-text-stream")
+async def speech_to_text_stream_endpoint(
+    websocket: WebSocket,
+    run_id: int,
+    db=Depends(get_db),
+    ws_manager=Depends(get_websocket_manager),
+):
+    """实时流式语音转文字WebSocket端点（直接注册到主app）"""
+    await speech_to_text_stream(websocket, run_id, db=db, ws_manager=ws_manager)
 
 # Mount static file directories
 app.mount("/api", api)
