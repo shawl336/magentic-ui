@@ -6,8 +6,11 @@ export interface IUser {
   name: string;
   email?: string;
   username?: string;
+  employee_id?: string;
   avatar_url?: string;
   metadata?: any;
+  id?: string;
+  tenant_id?: string;
 }
 
 export interface AppContextType {
@@ -17,6 +20,9 @@ export interface AppContextType {
   cookie_name: string;
   darkMode: string;
   setDarkMode: any;
+  isLoggedIn: boolean;
+  token: string | null;
+  setAuth: (user: IUser, token: string) => void;
 }
 
 const cookie_name = "coral_app_cookie_";
@@ -30,12 +36,27 @@ const Provider = ({ children }: any) => {
     storedValue === null ? "dark" : storedValue === "dark" ? "dark" : "light"
   );
 
-  const logout = () => {
-    // setUser(null);
-    // eraseCookie(cookie_name);
-    console.log("Please implement your own logout logic");
-    message.info("Please implement your own logout logic");
-  };
+  // Initialize auth state from localStorage (only on client side)
+  const [userState, setUserState] = useState<IUser | null>(() => {
+    if (typeof window === "undefined") return null;
+    const storedUser = localStorage.getItem("magentic_ui_user");
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch (e) {
+        console.error("Failed to parse stored user:", e);
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("magentic_ui_token");
+  });
+
+  const isLoggedIn = !!(token && userState);
 
   const updateDarkMode = (darkMode: string) => {
     setDarkMode(darkMode);
@@ -68,13 +89,6 @@ const Provider = ({ children }: any) => {
     }
   }, []);
 
-  // Modify logic here to add your own authentication
-  const initUser = {
-    name: "Guest User",
-    email: getLocalStorage("user_email") || "guestuser@gmail.com",
-    username: "guestuser",
-  };
-
   const setUser = (user: IUser | null) => {
     if (user?.email) {
       setLocalStorage("user_email", user.email, false);
@@ -82,18 +96,28 @@ const Provider = ({ children }: any) => {
     setUserState(user);
   };
 
-  const [userState, setUserState] = useState<IUser | null>(initUser);
-
-  React.useEffect(() => {
-    const storedEmail = getLocalStorage("user_email");
-    if (storedEmail) {
-      setUserState((prevUser) => ({
-        ...prevUser,
-        email: storedEmail,
-        name: storedEmail,
-      }));
+  const setAuth = (user: IUser, authToken: string) => {
+    setUserState(user);
+    setToken(authToken);
+    localStorage.setItem("magentic_ui_user", JSON.stringify(user));
+    localStorage.setItem("magentic_ui_token", authToken);
+    if (user.email) {
+      setLocalStorage("user_email", user.email, false);
     }
-  }, []);
+  };
+
+  const logout = () => {
+    // Clear auth state
+    setUserState(null);
+    setToken(null);
+    localStorage.removeItem("magentic_ui_user");
+    localStorage.removeItem("magentic_ui_token");
+    localStorage.removeItem("magentic_ui_refresh_token");
+    localStorage.removeItem("weknora_user");
+    localStorage.removeItem("weknora_token");
+    localStorage.removeItem("weknora_refresh_token");
+    message.success("已登出");
+  };
 
   return (
     <appContext.Provider
@@ -104,6 +128,9 @@ const Provider = ({ children }: any) => {
         cookie_name,
         darkMode,
         setDarkMode: updateDarkMode,
+        isLoggedIn,
+        token,
+        setAuth,
       }}
     >
       {children}
